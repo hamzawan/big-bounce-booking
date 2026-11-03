@@ -591,15 +591,14 @@
       </section>
 
       <section>
-        <h2>Your email</h2>
+        <h2>Your email <span style="color:#e8590c">*</span></h2>
         <div class="field">
           <input type="email" id="email" maxlength="255" autocomplete="email"
                  placeholder="you@example.com">
           <span class="field-icon" id="email-icon" aria-hidden="true"></span>
         </div>
         <p class="field-error" id="email-error"></p>
-        <p class="meta">Your booking confirmation and tickets are linked to it.
-          You can also enter it in the payment details.</p>
+        <p class="meta">Required. Your booking confirmation and tickets are linked to it.</p>
       </section>
     </div>
 
@@ -1183,6 +1182,7 @@
   });
 
   function confirmFree() {
+    if (!emailProvided()) return;
     if (!waiverAccepted()) return;
     state.busy = true;
     clearStatus();
@@ -1216,6 +1216,7 @@
   // ---- saving ----------------------------------------------------
 
   function save() {
+    if (!emailProvided()) return;
     if (!waiverAccepted()) return;
     if (locked()) return;
 
@@ -1483,7 +1484,7 @@
     // Needs tickets and a well-formed email before anything is saved.
     btn.disabled = state.busy || state.leaving ||
       L.ticketItems(state.selection.tickets).length === 0 ||
-      !!(state.selection.email || "").trim() && !L.isValidEmail(state.selection.email);
+      !L.isValidEmail((state.selection.email || "").trim());
     btn.textContent = state.busy ? "Saving…"
       : state.leaving ? "Opening payment…"
       : !state.booking ? "Reserve tickets"
@@ -1506,9 +1507,8 @@
 
     if (state.busy || state.leaving || state.submitted || state.frozen) return;
     if (!$("waiver").checked) return;
-    // One ticket is enough: the email can be given in the payment details.
-    var typed = (state.selection.email || "").trim();
-    if (typed && !L.isValidEmail(typed)) return;
+    // A booking is only created once a valid email is given.
+    if (!L.isValidEmail((state.selection.email || "").trim())) return;
     if (!L.ticketItems(state.selection.tickets).length) return;
     if (state.booking && !isDirty()) return;
 
@@ -1534,6 +1534,11 @@
   function render() {
     scheduleAutosave();
     showPaymentWhenTickets();
+    if (!state.booking) {
+      $("pay-placeholder").textContent =
+        "Enter your email and accept the waiver to continue to payment.";
+      $("pay-placeholder").classList.remove("hidden");
+    }
     renderTickets();
     renderAddOns();
     renderDiscount();
@@ -1601,6 +1606,7 @@
   }
 
   function openPayment() {
+    if (!emailProvided()) return;
     if (!waiverAccepted()) return;
     if (paymentOpen) return;
 
@@ -1849,6 +1855,22 @@
 
     if (state.booking && isDirty()) save(); else render();
   });
+
+  // A valid email is required before a booking is created or paid, so every
+  // booking in the organizer portal has a customer.
+  function emailProvided() {
+    var value = ($("email").value || "").trim();
+
+    if (L.isValidEmail(value)) return true;
+    emailTouched = true;
+    showEmailState(true);
+    $("email-error").textContent = value
+      ? "Enter a valid email address, like you@example.com."
+      : "Enter your email address to continue.";
+    $("email").classList.add("invalid");
+    $("email").focus();
+    return false;
+  }
 
   // The waiver is required before a booking is created or paid.
   function waiverAccepted() {
