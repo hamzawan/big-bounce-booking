@@ -32,7 +32,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const upstream = await fetch(dest, { method: req.method, headers, body, redirect: "manual" });
+    const upstream = await fetch(dest, { method: req.method, headers, body, redirect: "follow" });
     res.statusCode = upstream.status;
     upstream.headers.forEach((v, k) => { if (!DROP_RES.has(k)) res.setHeader(k, v); });
     res.end(Buffer.from(await upstream.arrayBuffer()));
