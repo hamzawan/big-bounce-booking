@@ -705,28 +705,20 @@
     return API_BASE + "/api/v1/tickets/booking/" + encodeURIComponent(id) + "/";
   }
 
-  // The backend's only add-on listing. It is organizer-only today, so a
-  // customer gets 401 and the page books without new add-ons.
+  // The add-on listing is public; no token is needed.
   function addOnsUrl(eventId, page) {
     return API_BASE + "/api/v1/organizer/add-ons/list/?event_id=" +
       encodeURIComponent(eventId) + "&is_active=true&page=" + page;
   }
 
-  // The add-on listing needs an organizer Bearer token from
-  // /api/v1/auth/login/. Same approach as index.html: asked for at runtime,
-  // kept for this tab only, never in the source.
+  // Optional: sent only if a token is already present for this tab.
   var TOKEN_KEY = "organizer_access_token";
 
   function getOrganizerToken() {
     var token = null;
 
+    // Customers are never asked for a token.
     try { token = sessionStorage.getItem(TOKEN_KEY); } catch (e) {}
-
-    if (!token) {
-      token = (window.prompt("Organizer access token:") || "").trim();
-
-      try { if (token) sessionStorage.setItem(TOKEN_KEY, token); } catch (e) {}
-    }
 
     return token;
   }
@@ -788,12 +780,6 @@
   function fetchAddOns(eventId) {
     var found = [];
     var token = getOrganizerToken();
-
-    if (!token) {
-      var none = new Error("no organizer token");
-      none.status = 401;
-      return Promise.reject(none);
-    }
 
     function page(n) {
       return request("GET", addOnsUrl(eventId, n), undefined, token).then(function (res) {
@@ -1381,9 +1367,9 @@
     }
 
     if (!list.length) {
-      $("addons-section").classList.toggle("hidden", state.addOnsStatus === "ok");
-      $("addons").innerHTML = '<p class="meta">Add-ons cannot be added online ' +
-        'right now.</p>';
+      // Nothing to offer (none exist, or they cannot be listed): no section.
+      $("addons-section").classList.add("hidden");
+      $("addons").innerHTML = "";
       return;
     }
 

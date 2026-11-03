@@ -331,20 +331,6 @@ content="width=device-width, initial-scale=1.0"
             token = sessionStorage.getItem(TOKEN_KEY);
         } catch (error) {}
 
-        if (!token) {
-
-            token = (
-                window.prompt(
-                    "Organizer access token:"
-                ) || ""
-            ).trim();
-
-            try {
-                if (token) sessionStorage.setItem(TOKEN_KEY, token);
-            } catch (error) {}
-
-        }
-
         return token;
 
     }

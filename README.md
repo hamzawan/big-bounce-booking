@@ -10,4 +10,4 @@ index.html is the organizer/ticket page.
 Config (no env vars): the backend defaults to https://146.190.141.95. Override per page with `?api=https://host`
 (passed along between pages), or set `window.PAYMENT_API_BASE` in a script loaded before the page script.
 The Stripe publishable key is returned by the backend's /api/v1/payments/stripe/intent/; none is stored here.
-Add-on listing needs an organizer token, prompted at runtime (sessionStorage).
+Add-on listing is public; no token is needed.
