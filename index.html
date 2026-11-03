@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+
+>
+
+<title>My Tickets</title>
+
+<style>
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        padding: 40px 20px;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f5f5f5;
+        color: #222;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+    }
+
+    .subtitle {
+        margin: 0 0 30px;
+        color: #666;
+        font-size: 16px;
+    }
+
+    #tickets {
+        display: grid;
+        grid-template-columns:
+            repeat(
+                auto-fill,
+                minmax(260px, 1fr)
+            );
+        gap: 24px;
+    }
+
+    .ticket-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 24px;
+
+        box-shadow:
+            0 4px 20px
+            rgba(0, 0, 0, 0.08);
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        min-height: 420px;
+    }
+
+    .qr-wrapper {
+        width: 220px;
+        height: 220px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        margin-bottom: 20px;
+
+        border-radius: 12px;
+
+        background: #fff;
+    }
+
+    .qr-code {
+        width: 220px;
+        height: 220px;
+
+        object-fit: contain;
+
+        display: block;
+    }
+
+    .not-available {
+        width: 220px;
+        height: 220px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        text-align: center;
+
+        background: #f1f1f1;
+
+        border-radius: 12px;
+
+        color: #777;
+
+        font-size: 22px;
+        font-weight: bold;
+    }
+
+    .ticket-info {
+        width: 100%;
+    }
+
+    .ticket-info p {
+        margin: 8px 0;
+        font-size: 14px;
+        word-break: break-word;
+    }
+
+    .status {
+        display: inline-block;
+
+        padding: 6px 12px;
+
+        border-radius: 20px;
+
+        font-size: 12px;
+
+        font-weight: bold;
+
+        text-transform: uppercase;
+    }
+
+    .status-issued {
+        background: #e7f7ed;
+        color: #16803c;
+    }
+
+    .status-entered {
+        background: #fbeaea;
+        color: #c62828;
+    }
+
+    .status-default {
+        background: #eeeeee;
+        color: #555;
+    }
+
+    .loading,
+    .error,
+    .empty {
+        grid-column: 1 / -1;
+
+        text-align: center;
+
+        padding: 40px 20px;
+
+        background: #fff;
+
+        border-radius: 12px;
+    }
+
+    .error {
+        color: #c62828;
+    }
+
+    .retry-btn,
+    .scan-btn {
+        margin-top: 15px;
+
+        padding: 10px 18px;
+
+        border: none;
+
+        border-radius: 8px;
+
+        cursor: pointer;
+
+        background: #222;
+
+        color: #fff;
+
+        font-size: 14px;
+    }
+
+    .scan-btn {
+        width: 100%;
+    }
+
+    .retry-btn:hover,
+    .scan-btn:hover {
+        opacity: 0.85;
+    }
+
+    .scan-result {
+        width: 100%;
+
+        margin-top: 12px;
+
+        padding: 10px;
+
+        border-radius: 8px;
+
+        font-size: 13px;
+
+        word-break: break-word;
+    }
+
+    .scan-success {
+        background: #e7f7ed;
+        color: #16803c;
+    }
+
+    .scan-error {
+        background: #fbeaea;
+        color: #c62828;
+    }
+
+    @media (max-width: 600px) {
+
+        body {
+            padding: 25px 15px;
+        }
+
+        h1 {
+            font-size: 26px;
+        }
+
+        #tickets {
+            grid-template-columns: 1fr;
+        }
+
+        .ticket-card {
+            min-height: auto;
+        }
+
+    }
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+
+<h1>
+    My Tickets
+</h1>
+
+<p class="subtitle">
+    Your available event tickets
+</p>
+
+<div id="tickets">
+
+    <div class="loading">
+        Loading tickets...
+    </div>
+
+</div>
+
+
+</div>
+
+<script>
+
+
+    /*
+     * ==========================================
+     * CONFIG
+     * ==========================================
+     */
+
+    const API_BASE_URL =
+        "https://146.190.141.95";
+
+
+    /*
+     * GET
+     *
+     * /api/v1/tickets/all/
+     */
+
+    const TICKETS_API =
+        `${API_BASE_URL}/api/v1/tickets/all/`;
+
+
+    /*
+     * POST
+     *
+     * /api/v1/tickets/scan/
+     *
+     * Body:
+     *
+     * {
+     *     "ticket_code": "..."
+     * }
+     */
+
+    const SCAN_API =
+        `${API_BASE_URL}/api/v1/tickets/scan/`;
+
+
+    /*
+     * /tickets/all/ is organizer-only and
+     * needs a Bearer token from
+     * /api/v1/auth/login/.
+     *
+     * Asked for at runtime and kept for
+     * this tab only, never in the source.
+     */
+
+    const TOKEN_KEY =
+        "organizer_access_token";
+
+
+    function getOrganizerToken() {
+
+        let token = null;
+
+        try {
+            token = sessionStorage.getItem(TOKEN_KEY);
+        } catch (error) {}
+
+        if (!token) {
+
+            token = (
+                window.prompt(
+                    "Organizer access token:"
+                ) || ""
+            ).trim();
+
+            try {
+                if (token) sessionStorage.setItem(TOKEN_KEY, token);
+            } catch (error) {}
+
+        }
+
+        return token;
+
+    }
+
+
+    function clearOrganizerToken() {
+
+        try {
+            sessionStorage.removeItem(TOKEN_KEY);
+        } catch (error) {}
+
+    }
+
+
+    /*
+     * ==========================================
+     * DOM
+     * ==========================================
+     */
+
+    const ticketsContainer =
+        document.getElementById(
+            "tickets"
+        );
+
+
+    /*
+     * ==========================================
+     * LOAD TICKETS
+     * ==========================================
+     */
+
+    async function loadTickets() {
+
+        ticketsContainer.innerHTML = `
+            <div class="loading">
+                Loading tickets...
+            </div>
+        `;
+
+
+        try {
+
+            console.log(
+                "GET TICKETS:",
+                TICKETS_API
+            );
+
+
+            const token =
+                getOrganizerToken();
+
+
+            if (!token) {
+
+                throw new Error(
+                    "An organizer access token is required to view tickets."
+                );
+
+            }
+
+
+            const response =
+                await fetch(
+                    TICKETS_API,
+                    {
+                        method: "GET",
+
+                        headers: {
+                            "Accept":
+                                "application/json",
+
+                            "Authorization":
+                                `Bearer ${token}`
+                        }
+                    }
+                );
+
+
+            const responseText =
+                await response.text();
+
+
+            console.log(
+                "Tickets status:",
+                response.status
+            );
+
+
+            console.log(
+                "Tickets response:",
+                responseText
+            );
+
+
+            if (
+                response.status === 401 ||
+                response.status === 403
+            ) {
+
+                // Ask again on "Try Again".
+                clearOrganizerToken();
+
+            }
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `Tickets API returned HTTP ${response.status}`
+                );
+
+            }
+
+
+            let tickets;
+
+
+            try {
+
+                // Paged: { page, page_size, total, results }
+                tickets =
+                    JSON.parse(
+                        responseText
+                    ).results;
+
+            } catch (error) {
+
+                throw new Error(
+                    "Tickets API returned invalid JSON."
+                );
+
+            }
+
+
+            if (!Array.isArray(tickets)) {
+
+                throw new Error(
+                    "Tickets API response is not an array."
+                );
+
+            }
+
+
+            if (tickets.length === 0) {
+
+                ticketsContainer.innerHTML = `
+                    <div class="empty">
+                        No tickets found.
+                    </div>
+                `;
+
+                return;
+
+            }
+
+
+            ticketsContainer.innerHTML = "";
+
+
+            tickets.forEach(
+                ticket => {
+
+                    renderTicket(
+                        ticket
+                    );
+
+                }
+            );
+
+
+        } catch (error) {
+
+            console.error(
+                "Ticket API Error:",
+                error
+            );
+
+
+            ticketsContainer.innerHTML = `
+
+                <div class="error">
+
+                    <strong>
+                        Failed to load tickets.
+                    </strong>
+
+                    <p>
+                        ${escapeHtml(
+                            error.message
+                        )}
+                    </p>
+
+                    <button
+                        class="retry-btn"
+                        onclick="loadTickets()"
+                    >
+                        Try Again
+                    </button>
+
+                </div>
+
+            `;
+
+        }
+
+    }
+
+
+    /*
+     * ==========================================
+     * RENDER TICKET
+     * ==========================================
+     */
+
+    function renderTicket(ticket) {
+
+        const card =
+            document.createElement(
+                "div"
+            );
+
+
+        card.className =
+            "ticket-card";
+
+
+        /*
+         * ======================================
+         * STATUS
+         * ======================================
+         */
+
+        const status =
+            String(
+                ticket.status || ""
+            )
+            .trim()
+            .toLowerCase();
+
+
+        let statusClass =
+            "status-default";
+
+
+        if (status === "issued") {
+
+            statusClass =
+                "status-issued";
+
+        }
+
+
+        if (status === "entered") {
+
+            statusClass =
+                "status-entered";
+
+        }
+
+
+        /*
+         * ======================================
+         * QR IMAGE
+         * ======================================
+         *
+         * IMPORTANT:
+         *
+         * QR code is displayed regardless
+         * of ticket status.
+         *
+         * Previously:
+         *
+         * if status === "entered"
+         *     -> NOT AVAILABLE
+         *
+         * That logic has been removed.
+         *
+         * Now:
+         *
+         * issued  -> QR shown
+         * entered -> QR shown
+         */
+
+        const qrPath =
+            String(
+                ticket.qr_code || ""
+            ).trim();
+
+
+        let visualContent;
+
+
+        if (!qrPath) {
+
+            visualContent = `
+
+                <div class="not-available">
+                    QR NOT AVAILABLE
+                </div>
+
+            `;
+
+        } else {
+
+            let qrUrl;
+
+
+            if (
+                qrPath.startsWith(
+                    "http://"
+                ) ||
+                qrPath.startsWith(
+                    "https://"
+                )
+            ) {
+
+                qrUrl =
+                    qrPath;
+
+            } else {
+
+                /*
+                 * Handles:
+                 *
+                 * /media/tickets/abc.png
+                 *
+                 * without creating //.
+                 */
+
+                qrUrl =
+                    `${API_BASE_URL}${qrPath.startsWith("/") ? "" : "/"}${qrPath}`;
+
+            }
+
+
+            console.log(
+                "QR URL:",
+                qrUrl
+            );
+
+
+            visualContent = `
+
+                <div class="qr-wrapper">
+
+                    <img
+                        src="${escapeHtml(qrUrl)}"
+                        alt="Ticket QR Code"
+                        class="qr-code"
+                        loading="lazy"
+                        onerror="handleImageError(this)"
+                    >
+
+                </div>
+
+            `;
+
+        }
+
+
+        /*
+         * ======================================
+         * SAFE RESULT ID
+         * ======================================
+         */
+
+        const ticketCode =
+            String(
+                ticket.ticket_code || ""
+            );
+
+
+        const resultId =
+            "scan-result-" +
+            btoa(
+                ticketCode
+            )
+            .replace(
+                /[^a-zA-Z0-9]/g,
+                ""
+            );
+
+
+        /*
+         * ======================================
+         * CARD HTML
+         * ======================================
+         */
+
+        card.innerHTML = `
+
+            ${visualContent}
+
+
+            <div class="ticket-info">
+
+
+                <p>
+
+                    <strong>
+                        Ticket Code:
+                    </strong>
+
+                    <br>
+
+                    ${escapeHtml(
+                        ticketCode ||
+                        "N/A"
+                    )}
+
+                </p>
+
+
+                <p>
+
+                    <strong>
+                        Status:
+                    </strong>
+
+                    <br>
+
+                    <span
+                        class="status ${statusClass}"
+                    >
+
+                        ${escapeHtml(
+                            ticket.status ||
+                            "N/A"
+                        )}
+
+                    </span>
+
+                </p>
+
+
+                <p>
+
+                    <strong>
+                        Ticket ID:
+                    </strong>
+
+                    <br>
+
+                    ${escapeHtml(
+                        ticket.id ||
+                        "N/A"
+                    )}
+
+                </p>
+
+
+                <button
+                    class="scan-btn"
+                    onclick='scanTicket(${JSON.stringify(ticketCode)}, ${JSON.stringify(resultId)})'
+                >
+                    Check Ticket
+                </button>
+
+
+                <div
+                    class="scan-result"
+                    id="${escapeHtml(resultId)}"
+                    style="display:none;"
+                ></div>
+
+
+            </div>
+
+        `;
+
+
+        ticketsContainer.appendChild(
+            card
+        );
+
+    }
+
+
+    /*
+     * ==========================================
+     * SCAN TICKET
+     * ==========================================
+     *
+     * POST:
+     *
+     * https://146.190.141.95/api/v1/tickets/scan/
+     *
+     * BODY:
+     *
+     * {
+     *     "ticket_code":
+     *         "ISj22uNw32IhgsoDLEKXAHu3azpdUjB-LzXR9JNptAo"
+     * }
+     *
+     */
+
+    async function scanTicket(
+        ticketCode,
+        resultId
+    ) {
+
+        console.log(
+            "POST SCAN:",
+            SCAN_API
+        );
+
+
+        console.log(
+            "TICKET CODE:",
+            ticketCode
+        );
+
+
+        const resultElement =
+            document.getElementById(
+                resultId
+            );
+
+
+        if (!resultElement) {
+
+            return;
+
+        }
+
+
+        resultElement.style.display =
+            "block";
+
+
+        resultElement.className =
+            "scan-result";
+
+
+        resultElement.innerText =
+            "Checking ticket...";
+
+
+        try {
+
+            /*
+             * IMPORTANT:
+             *
+             * ticket_code goes in BODY,
+             * NOT in URL.
+             */
+
+            const response =
+                await fetch(
+                    SCAN_API,
+                    {
+                        method: "POST",
+
+                        headers: {
+
+                            "Content-Type":
+                                "application/json",
+
+                            "Accept":
+                                "application/json"
+
+                        },
+
+                        body: JSON.stringify({
+
+                            ticket_code:
+                                ticketCode
+
+                        })
+
+                    }
+                );
+
+
+            const responseText =
+                await response.text();
+
+
+            console.log(
+                "SCAN STATUS:",
+                response.status
+            );
+
+
+            console.log(
+                "SCAN RESPONSE:",
+                responseText
+            );
+
+
+            /*
+             * Parse JSON
+             */
+
+            let data = {};
+
+
+            try {
+
+                data =
+                    JSON.parse(
+                        responseText
+                    );
+
+            } catch (error) {
+
+                data = {
+
+                    detail:
+                        responseText
+
+                };
+
+            }
+
+
+            /*
+             * SUCCESS
+             */
+
+            if (response.ok) {
+
+                resultElement.className =
+                    "scan-result scan-success";
+
+
+                resultElement.innerHTML = `
+
+                    <strong>
+                        ✅ Ticket Entered
+                    </strong>
+
+                    <br><br>
+
+                    ${escapeHtml(
+                        JSON.stringify(
+                            data
+                        )
+                    )}
+
+                `;
+
+
+                /*
+                 * Refresh ticket list so
+                 * status changes immediately.
+                 *
+                 * QR will STILL remain visible
+                 * after refresh because QR rendering
+                 * is no longer dependent on status.
+                 */
+
+                setTimeout(
+                    loadTickets,
+                    1000
+                );
+
+            }
+
+
+            /*
+             * ERROR
+             */
+
+            else {
+
+                const detail =
+                    data.detail ||
+                    data.message ||
+                    "Invalid / Already Used Ticket";
+
+
+                resultElement.className =
+                    "scan-result scan-error";
+
+
+                resultElement.innerHTML = `
+
+                    <strong>
+                        ❌ Scan Failed
+                    </strong>
+
+                    <br>
+
+                    HTTP ${response.status}
+
+                    <br><br>
+
+                    ${escapeHtml(
+                        detail
+                    )}
+
+                `;
+
+            }
+
+
+        } catch (error) {
+
+            console.error(
+                "Scan error:",
+                error
+            );
+
+
+            resultElement.className =
+                "scan-result scan-error";
+
+
+            resultElement.innerHTML = `
+
+                <strong>
+                    ❌ API Error
+                </strong>
+
+                <br><br>
+
+                ${escapeHtml(
+                    error.message
+                )}
+
+            `;
+
+        }
+
+    }
+
+
+    /*
+     * ==========================================
+     * IMAGE ERROR
+     * ==========================================
+     */
+
+    function handleImageError(image) {
+
+        console.error(
+            "QR image failed:",
+            image.src
+        );
+
+
+        const wrapper =
+            image.parentElement;
+
+
+        wrapper.innerHTML = `
+
+            <div class="not-available">
+                QR NOT AVAILABLE
+            </div>
+
+        `;
+
+    }
+
+
+    /*
+     * ==========================================
+     * HTML ESCAPE
+     * ==========================================
+     */
+
+    function escapeHtml(value) {
+
+        const div =
+            document.createElement(
+                "div"
+            );
+
+
+        div.textContent =
+            String(
+                value ?? ""
+            );
+
+
+        return div.innerHTML;
+
+    }
+
+
+    /*
+     * ==========================================
+     * INITIAL LOAD
+     * ==========================================
+     */
+
+    loadTickets();
+
+
+</script>
+
+</body>
+
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events</title>
+<link rel="preconnect" href="https://146.190.141.95" crossorigin>
+
+<!--
+  Event list: the first step of the flow
+      events.html  ->  booking.html?event_id=<uuid>  ->  stripe_payment.html
+
+  Reads the public GET /api/v1/events/list/ once (up to 50 events) and
+  searches and pages them in the browser.
+  No login: customers use this page.
+  Backend: ?api=<base>, then window.PAYMENT_API_BASE, then DEFAULT_API_BASE,
+  the same as booking.html. The chosen ?api= is passed on to the booking page.
+-->
+
+<style>
+  :root {
+    --ink: #1a1d21;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --bg: #f6f7f9;
+    --accent: #12603a;
+    --bad: #b42318;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px 16px 56px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  h1 { font-size: 26px; margin: 0; }
+
+  .search { position: relative; width: 360px; max-width: 100%; }
+
+  .search input {
+    display: block;
+    width: 100%;
+    padding: 11px 40px 11px 42px;
+    font: inherit;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .search input::placeholder { color: #9ca3af; }
+
+  .search input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(18, 96, 58, .15);
+  }
+
+  .search .icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin-top: -9px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .search .clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    width: 28px;
+    height: 28px;
+    margin-top: -14px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--muted);
+    background: #eef0f2;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .search .clear:hover { background: #e2e5e9; color: var(--ink); }
+
+  .result-info { min-height: 20px; margin: -8px 0 14px; }
+
+  .btn {
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .btn:hover:not([disabled]) { border-color: var(--accent); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .event {
+    display: flex;
+    flex-direction: column;
+    color: inherit;
+    text-decoration: none;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
+  }
+
+  a.event:hover, a.event:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .08);
+    transform: translateY(-2px);
+  }
+
+  .event.off { opacity: .7; }
+
+  .thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #e9ecef;
+  }
+
+  .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  .badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 999px;
+  }
+
+  .badge.off { background: #6b7280; }
+
+  .info { display: flex; flex-direction: column; gap: 6px; padding: 16px; flex: 1; }
+
+  .info h2 { font-size: 18px; margin: 0; }
+
+  .meta { margin: 0; font-size: 14px; color: var(--muted); }
+
+  .foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 10px;
+  }
+
+  .price { font-weight: 700; }
+
+  .cta {
+    padding: 8px 14px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 6px;
+  }
+
+  .event.off .cta { background: #9ca3af; }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 28px;
+  }
+
+  .empty, .error {
+    padding: 48px 16px;
+    text-align: center;
+    color: var(--muted);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .error { color: var(--bad); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Upcoming events</h1>
+    <div class="search" role="search">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+      </svg>
+      <input type="text" id="search" maxlength="100" placeholder="Search events"
+             autocomplete="off" spellcheck="false" aria-label="Search events">
+      <button type="button" class="clear hidden" id="search-clear"
+              aria-label="Clear search">×</button>
+    </div>
+  </header>
+
+  <p class="meta result-info" id="result-info" aria-live="polite"></p>
+
+  <div id="list" class="grid" aria-live="polite"></div>
+
+  <nav class="pager hidden" id="pager" aria-label="Pages">
+    <button type="button" class="btn" id="prev">← Previous</button>
+    <span class="meta" id="page-label"></span>
+    <button type="button" class="btn" id="next">Next →</button>
+  </nav>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var params = new URLSearchParams(location.search);
+
+  // Same backend the other pages of this frontend use.
+  var DEFAULT_API_BASE = "https://146.190.141.95";
+  var CURRENCY = "USD";
+  var PAGE_SIZE = 9;
+
+  var API_BASE = (function () {
+    var explicit = params.get("api");
+
+    if (explicit !== null && explicit.trim() !== "") {
+      return explicit.trim().replace(/\/+$/, "");
+    }
+
+    if (typeof window.PAYMENT_API_BASE === "string") {
+      return window.PAYMENT_API_BASE.trim().replace(/\/+$/, "");
+    }
+
+    return DEFAULT_API_BASE;
+  })();
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = { page: 1 };
+
+  function escapeHtml(value) {
+    var div = document.createElement("div");
+    div.textContent = String(value == null ? "" : value);
+    return div.innerHTML;
+  }
+
+  function mediaUrl(path) {
+    if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path;
+    return API_BASE + (path.charAt(0) === "/" ? "" : "/") + path;
+  }
+
+  function money(amount) {
+    var n = Number(amount);
+
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency", currency: CURRENCY,
+        minimumFractionDigits: n % 1 === 0 ? 0 : 2
+      }).format(n);
+    } catch (err) {
+      return amount + " " + CURRENCY;
+    }
+  }
+
+  // "2026-11-11" is a calendar date, not a moment: no time-zone shift.
+  function dateLabel(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+    if (!m) return "";
+
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, {
+      weekday: "short", month: "short", day: "numeric", year: "numeric"
+    });
+  }
+
+  function timeLabel(value) {
+    var m = /^(\d{2}):(\d{2})/.exec(value || "");
+    return m ? m[1] + ":" + m[2] : "";
+  }
+
+  function when(event) {
+    var sessions = (event.sessions || []).filter(function (s) { return s.session_date; });
+
+    if (sessions.length) {
+      var dates = {};
+      sessions.forEach(function (s) { dates[s.session_date] = true; });
+
+      var days = Object.keys(dates).sort();
+      var first = sessions.filter(function (s) { return s.session_date === days[0]; })[0];
+      var text = dateLabel(days[0]);
+
+      if (days.length > 1) return text + " · +" + (days.length - 1) + " more date" +
+        (days.length > 2 ? "s" : "");
+
+      return text + (first.start_time ? " · " + timeLabel(first.start_time) +
+        (first.end_time ? "–" + timeLabel(first.end_time) : "") : "");
+    }
+
+    return dateLabel(event.event_date) + (event.start_time ? " · " +
+      timeLabel(event.start_time) + (event.end_time ? "–" + timeLabel(event.end_time) : "") : "");
+  }
+
+  function fromPrice(event) {
+    var prices = (event.ticket_types || []).map(function (t) { return Number(t.price); })
+      .filter(function (n) { return !isNaN(n); });
+
+    return prices.length ? "From " + money(Math.min.apply(null, prices)) : "";
+  }
+
+  // Only events on sale with tickets left can be booked.
+  function bookable(event) {
+    return event.status === "on_sale" && Number(event.available_tickets) > 0;
+  }
+
+  function badgeText(event) {
+    if (event.status !== "on_sale") return "Not on sale";
+    if (Number(event.available_tickets) <= 0) return "Sold out";
+    if (Number(event.available_tickets) <= 10) return "Only " + event.available_tickets + " left";
+    return "On sale";
+  }
+
+  function bookingHref(event) {
+    var next = new URLSearchParams({ event_id: event.id });
+    if (params.get("api")) next.set("api", params.get("api"));
+    return "booking.html?" + next.toString();
+  }
+
+  function card(event) {
+    var ok = bookable(event);
+    var image = (event.images || []).slice().sort(function (a, b) {
+      return (a.sort_order || 0) - (b.sort_order || 0);
+    })[0];
+    var place = [event.venue, event.city].filter(Boolean).join(", ");
+
+    var body =
+      '<div class="thumb">' +
+        (image ? '<img src="' + escapeHtml(mediaUrl(image.url)) + '" alt="" loading="lazy" ' +
+          'onerror="this.remove()">' : "") +
+        '<span class="badge' + (ok ? "" : " off") + '">' + escapeHtml(badgeText(event)) + '</span>' +
+      '</div>' +
+      '<div class="info">' +
+        '<h2>' + escapeHtml(event.name) + '</h2>' +
+        '<p class="meta">' + escapeHtml(when(event)) + '</p>' +
+        (place ? '<p class="meta">' + escapeHtml(place) + '</p>' : "") +
+        '<div class="foot"><span class="price">' + escapeHtml(fromPrice(event)) + '</span>' +
+          '<span class="cta">' + (ok ? "Book now" : "Unavailable") + '</span></div>' +
+      '</div>';
+
+    return ok
+      ? '<a class="event" href="' + escapeHtml(bookingHref(event)) + '">' + body + '</a>'
+      : '<div class="event off" aria-disabled="true">' + body + '</div>';
+  }
+
+  // The API is far away, so fetch the events once (50 is its largest page)
+  // and search and page them here: typing costs no requests.
+  var events = [];
+
+  function show() {
+    var query = $("search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+    var found = events.filter(function (e) {
+      var text = [e.name, e.venue, e.city, e.address].join(" ").toLowerCase();
+      return query.every(function (word) { return text.indexOf(word) !== -1; });
+    });
+
+    var pages = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
+    state.page = Math.min(state.page, pages);
+
+    $("search-clear").classList.toggle("hidden", !$("search").value);
+    $("pager").classList.toggle("hidden", pages <= 1);
+    $("page-label").textContent = "Page " + state.page + " of " + pages;
+    $("prev").disabled = state.page <= 1;
+    $("next").disabled = state.page >= pages;
+    $("result-info").textContent = found.length + (found.length === 1 ? " event" : " events");
+
+    $("list").innerHTML = found.length
+      ? found.slice((state.page - 1) * PAGE_SIZE, state.page * PAGE_SIZE).map(card).join("")
+      : '<div class="empty" style="grid-column:1/-1">No events found.</div>';
+  }
+
+  $("search").addEventListener("input", function () { state.page = 1; show(); });
+
+  $("search").addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { this.value = ""; state.page = 1; show(); }
+  });
+
+  $("search-clear").addEventListener("click", function () {
+    $("search").value = "";
+    state.page = 1;
+    show();
+    $("search").focus();
+  });
+
+  $("prev").addEventListener("click", function () { state.page--; show(); window.scrollTo(0, 0); });
+  $("next").addEventListener("click", function () { state.page++; show(); window.scrollTo(0, 0); });
+
+  fetch(API_BASE + "/api/v1/events/list/?page_size=50", {
+    headers: { "Accept": "application/json", "ngrok-skip-browser-warning": "1" }
+  })
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      events = data.results || [];
+      $("search").value = params.get("search") || "";
+      show();
+    })
+    .catch(function () {
+      $("list").innerHTML = '<div class="error" style="grid-column:1/-1">' +
+        'We could not load the events. Please try again in a moment.</div>';
+    });
+})();
+</script>
+</body>
+</html>

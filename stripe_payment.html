@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Complete your payment</title>
+
+<!--
+  Stripe Payment Element page for a booking. Standalone: no other page,
+  script, login or build step is needed, so this file can be copied into
+  any frontend as it is.
+
+  Card details are entered in Stripe's own iframes and go straight from the
+  browser to Stripe. This page and the backend never see them.
+
+  Usage:  stripe_payment.html?booking_id=<uuid>
+
+  The backend base URL resolves as:
+
+    1. ?api=<base>              explicit, for testing and staging
+    2. window.PAYMENT_API_BASE  deployment configuration, set by a script
+                                loaded before this one
+    3. DEV_API_BASE             local development fallback
+
+  e.g.  local       ?booking_id=<uuid>
+        staging     ?booking_id=<uuid>&api=https://staging-api.example.com
+        production  ?booking_id=<uuid>, with
+                    <script>window.PAYMENT_API_BASE = "https://api.example.com";</script>
+
+  The Stripe publishable key comes from the backend, with the booking's
+  PaymentIntent. No key or secret is written into this file.
+
+  The browser's payment result is never treated as final: the page waits
+  until the backend, told by Stripe's webhook, reports the booking paid.
+
+  Content-Security-Policy needed by Stripe.js, if the site sets one:
+
+    script-src  https://js.stripe.com;
+    frame-src   https://js.stripe.com https://hooks.stripe.com;
+    connect-src https://api.stripe.com <api base>;
+-->
+
+<script src="https://js.stripe.com/v3/"></script>
+
+<style>
+  :root {
+    --ink: #1a1d21;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --bg: #f6f7f9;
+    --accent: #12603a;
+    --bad: #b42318;
+    --warn: #b54708;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .card {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px;
+  }
+
+  h1 { font-size: 19px; margin: 0 0 20px; }
+
+  h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 24px 0 10px;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .row:last-of-type { border-bottom: 0; }
+
+  .row .label { color: var(--muted); }
+
+  .total {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 2px solid var(--ink);
+    display: flex;
+    justify-content: space-between;
+    font-size: 19px;
+    font-weight: 650;
+  }
+
+  .meta {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  label {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #30313d;
+  }
+
+  label .optional { color: var(--muted); font-size: 13px; }
+
+  input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px 12px;
+    font: inherit;
+    color: var(--ink);
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+  }
+
+  input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(18, 96, 58, .15);
+  }
+
+  input[readonly] {
+    background: var(--bg);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  #payment-element { min-height: 40px; }
+
+  #pay {
+    width: 100%;
+    margin-top: 22px;
+    padding: 13px 18px;
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  #pay[disabled] { opacity: .5; cursor: not-allowed; }
+
+  #status {
+    margin-top: 18px;
+    padding: 13px 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    display: none;
+  }
+
+  #status.show { display: block; }
+  #status.ok   { background: #e7f4ed; color: var(--accent); }
+  #status.bad  { background: #fdeceb; color: var(--bad); }
+  #status.warn { background: #fdf3e7; color: var(--warn); }
+  #status.info { background: #eef2f7; color: var(--muted); }
+
+  .hidden { display: none; }
+
+  /* ?embed=1: shown inside booking.html. Only the card form is shown there;
+     the booking page already has the details and the total. */
+  html.embed body { padding: 0; background: transparent; }
+  html.embed .card { max-width: none; border: 0; padding: 18px; border-radius: 0; background: transparent; }
+  html.embed h1, html.embed #summary,
+  html.embed #edit, html.embed #back { display: none !important; }
+  html.embed form h2:first-child { margin-top: 0; }
+  /* The amount, already filled in, as a tile above the card form. */
+  html.embed .total {
+    margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--accent);
+    border-radius: 8px; font-size: 18px; background: #fff;
+  }
+  #card-idle { color: var(--muted); font-size: 14px; padding: 12px 14px;
+    border: 1px dashed var(--line); border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Complete your payment</h1>
+
+  <div id="summary">
+    <div class="row"><span class="label">Tickets</span><span id="tickets">—</span></div>
+    <div class="row hidden" id="row-ticket-subtotal"><span class="label">Ticket subtotal</span><span id="ticket-subtotal"></span></div>
+    <div class="row hidden" id="row-discount"><span class="label">Discount</span><span id="discount"></span></div>
+    <div class="row hidden" id="row-protection"><span class="label">Ticketing Protection</span><span id="protection"></span></div>
+    <div class="row hidden" id="row-add-ons"><span class="label">Add-ons</span><span id="add-ons"></span></div>
+  </div>
+
+  <div class="total">
+    <span>Total</span>
+    <span id="amount">—</span>
+  </div>
+
+  <p class="meta" id="hold">
+    Your reservation is held for <strong id="countdown">—</strong>.
+  </p>
+
+  <p class="meta hidden" id="edit">
+    <a id="edit-link" href="#">Change your booking</a>
+  </p>
+
+  <p class="meta hidden" id="back">
+    <a id="back-link" href="#">Back to your booking</a>
+  </p>
+
+  <form id="form" class="hidden" novalidate>
+    <h2>Your details</h2>
+
+    <label>Full name <span class="optional">(optional)</span>
+      <input id="name" type="text" autocomplete="name" maxlength="200">
+    </label>
+
+    <label id="email-label">Email <span class="optional" id="email-note">(optional)</span>
+      <input id="email" type="email" autocomplete="email" maxlength="255">
+    </label>
+
+    <label>Phone <span class="optional">(optional)</span>
+      <input id="phone" type="tel" autocomplete="tel" maxlength="20">
+    </label>
+
+    <h2>Card details</h2>
+
+    <p id="card-idle" class="hidden">The card field appears here as soon as
+      your tickets and email are chosen. You can fill in your details above
+      in the meantime.</p>
+    <div id="payment-element"></div>
+
+    <button type="submit" id="pay" disabled>Pay</button>
+  </form>
+
+  <div id="status"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var params    = new URLSearchParams(location.search);
+  var bookingId = params.get("booking_id");
+
+  // Inside the booking page: talk to the parent window instead of an opener.
+  var embedded = params.get("embed") === "1" && window.parent !== window;
+  if (embedded) document.documentElement.classList.add("embed");
+  if (embedded) document.getElementById("email-note").textContent = "(required)";
+
+  // Local development fallback: FastAPI as published by
+  // docker-compose.dev.yml. Never a production value.
+  var DEV_API_BASE = "https://146.190.141.95";
+
+  // How long to wait for the webhook to mark the booking paid.
+  var POLL_INTERVAL_MS = 2000;
+  var POLL_TIMEOUT_MS  = 120000;
+
+  var API_BASE = resolveApiBase();
+
+  // Only these two backend calls are made.
+  var INTENT_URL  = API_BASE + "/api/v1/payments/stripe/intent/";
+  var BOOKING_URL = bookingUrlFor(bookingId);
+
+  function bookingUrlFor(id) {
+    return API_BASE + "/api/v1/bookings/" + encodeURIComponent(id || "");
+  }
+
+  function resolveApiBase() {
+    var explicit = params.get("api");
+
+    if (explicit !== null && explicit.trim() !== "") {
+      return explicit.trim().replace(/\/+$/, "");
+    }
+
+    // An empty string is meaningful here: "use my own origin".
+    if (typeof window.PAYMENT_API_BASE === "string") {
+      return window.PAYMENT_API_BASE.trim().replace(/\/+$/, "");
+    }
+
+    return DEV_API_BASE;
+  }
+
+  var form      = document.getElementById("form");
+  var payBtn    = document.getElementById("pay");
+  var statusBox = document.getElementById("status");
+
+  var stripe    = null;
+  var elements  = null;
+  var ready     = false;   // Payment Element mounted
+  var busy      = false;   // a payment is being submitted
+  var settled   = false;   // paid, expired or otherwise final
+  var remaining = 0;
+  var amountText = "";
+  var amountCents = null;  // what the customer was shown, from the backend
+
+  // Tells the booking tab (if this was opened from it) what happened here, so
+  // it can react at once, even if this tab is closed straight afterwards.
+  function tellOpener(action, height) {
+    try {
+      var target = embedded ? window.parent : window.opener;
+      if (target && !target.closed) {
+        target.postMessage({ source: "stripe-payment", action: action, height: height },
+          location.origin);
+      }
+    } catch (e) {}
+  }
+
+  // The booking page sizes the frame to fit the form.
+  if (embedded && window.ResizeObserver) {
+    new ResizeObserver(function () {
+      var card = document.querySelector(".card");
+      tellOpener("resize", Math.ceil(card.getBoundingClientRect().height) + 4);
+    }).observe(document.querySelector(".card"));
+  }
+
+  // Opened as a tab from the booking page: go back by closing this tab, so
+  // the booking page is exactly where the customer left it.
+  function backToBooking(event) {
+    try {
+      if (window.opener && !window.opener.closed) {
+        event.preventDefault();
+        tellOpener("settled");
+        window.opener.focus();
+        window.close();
+      }
+    } catch (e) {}
+  }
+
+  function showBackLink(kind) {
+    var link = document.getElementById("back-link");
+
+    // After a payment the booking page holds the confirmation and tickets.
+    link.textContent = kind === "ok"
+      ? "View your booking and tickets →"
+      : "Back to your booking";
+
+    link.href = "booking.html?booking_id=" + encodeURIComponent(params.get("booking_id") || "") +
+      (API_BASE ? "&api=" + encodeURIComponent(API_BASE) : "");
+    document.getElementById("back").classList.remove("hidden");
+  }
+
+  document.getElementById("edit-link").addEventListener("click", backToBooking);
+  document.getElementById("back-link").addEventListener("click", backToBooking);
+
+  function say(kind, message) {
+    statusBox.className = "show " + kind;
+    statusBox.textContent = message;
+  }
+
+  function clearStatus() {
+    statusBox.className = "";
+    statusBox.textContent = "";
+  }
+
+  function refreshButton() {
+    payBtn.disabled = !ready || busy || settled || remaining <= 0;
+    payBtn.textContent = busy ? "Processing…" : "Pay " + amountText;
+  }
+
+  function finish(kind, message) {
+    tellOpener("settled");
+    settled = true;
+    refreshButton();
+    document.getElementById("hold").classList.add("hidden");
+    document.getElementById("edit").classList.add("hidden");
+    say(kind, message);
+    showBackLink(kind);
+  }
+
+  // ---- backend ---------------------------------------------------
+
+  // Resolves to { status, body }. Only a failure to reach the server at
+  // all rejects.
+  function postIntent(contact) {
+    var body = { booking_id: bookingId };
+
+    // Only the booking and the contact details are ever sent; the amount
+    // is the backend's alone.
+    Object.keys(contact || {}).forEach(function (key) {
+      if (contact[key]) body[key] = contact[key];
+    });
+
+    return fetch(INTENT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(readJson);
+  }
+
+  // Resolves to { status, body }, the booking itself at the root of body.
+  // ngrok's free tier answers browser GETs with an HTML warning page (no
+  // CORS headers) unless this header is sent; the backend allows it, and
+  // anywhere else it is ignored.
+  function getBooking() {
+    return fetch(BOOKING_URL, {
+      headers: { "ngrok-skip-browser-warning": "1" }
+    }).then(readJson);
+  }
+
+  function readJson(r) {
+    return r.json().then(
+      function (body) { return { status: r.status, body: body }; },
+      function () { return { status: r.status, body: {} }; }
+    );
+  }
+
+  function detailOf(body) {
+    var detail = body && body.detail;
+
+    // FastAPI validation errors are a list.
+    if (Array.isArray(detail)) {
+      return detail.map(function (e) {
+        var field = (e.loc || []).slice(-1)[0];
+        return (field ? field + ": " : "") + e.msg;
+      }).join("; ");
+    }
+
+    return detail || "";
+  }
+
+  // Maps an intent-endpoint refusal to what the customer sees. Returns
+  // false when the page may still be used.
+  function handleRefusal(res) {
+    var detail = detailOf(res.body);
+
+    if (res.status === 409 && detail === "Booking has already been paid.") {
+      finish("ok", "This booking is already paid. Your tickets have been issued.");
+      return true;
+    }
+
+    if (res.status === 409 && detail === "payment_in_progress") {
+      // Stripe has the payment; wait for the backend to confirm it.
+      waitForPaid();
+      return true;
+    }
+
+    if (res.status === 409 && detail === "Payment is held for review.") {
+      finish("warn", "Your payment is being reviewed. Please do not pay " +
+        "again. Contact us if you have any questions.");
+      return true;
+    }
+
+    if (res.status === 410) {
+      finish("bad", "Your reservation expired before payment. You have " +
+        "not been charged. Please start a new booking.");
+      return true;
+    }
+
+    if (res.status === 404) {
+      finish("bad", "We could not find this booking.");
+      return true;
+    }
+
+    if (res.status === 409 || res.status === 422) {
+      finish("bad", detail || "This booking can no longer be paid.");
+      return true;
+    }
+
+    if (res.status === 502) {
+      say("bad", "The payment service is unavailable right now. Please try " +
+        "again in a moment.");
+      return false;
+    }
+
+    say("bad", "Something went wrong on our side (HTTP " + res.status +
+      "). Please try again.");
+    return false;
+  }
+
+  // ---- boot ------------------------------------------------------
+
+  // Inside the booking page the form is shown before there is a booking:
+  // the details can be filled in at once, and the card field follows when
+  // the booking page sends the booking id.
+  function showIdle() {
+    form.classList.remove("hidden");
+    document.getElementById("hold").classList.add("hidden");
+    document.getElementById("card-idle").classList.remove("hidden");
+    payBtn.disabled = true;
+    payBtn.textContent = "Pay";
+  }
+
+  function setBooking(id) {
+    if (bookingId) return;
+
+    bookingId = id;
+    params.set("booking_id", id);
+    BOOKING_URL = bookingUrlFor(id);
+
+    // A bank redirect returns to this address, so it must name the booking.
+    try {
+      history.replaceState(null, "", location.pathname + "?" + params.toString());
+    } catch (e) {}
+
+    document.getElementById("card-idle").classList.add("hidden");
+    document.getElementById("hold").classList.remove("hidden");
+    boot();
+  }
+
+  function boot() {
+    if (!bookingId && embedded) {
+      showIdle();
+      tellOpener("ready");
+      return;
+    }
+
+    if (!bookingId) {
+      finish("bad", "No booking_id in the URL.");
+      return;
+    }
+
+    if (typeof window.Stripe !== "function") {
+      finish("bad", "Could not load the secure payment form. Please check " +
+        "your connection and reload the page.");
+      return;
+    }
+
+    // Returning from a bank page that needed a redirect: the payment was
+    // already submitted, so go straight to waiting for confirmation.
+    if (params.get("redirect_status") === "succeeded") {
+      waitForPaid();
+      return;
+    }
+
+    loadBooking();
+
+    postIntent()
+      .then(function (res) {
+        if (res.status !== 200) {
+          handleRefusal(res);
+          return;
+        }
+
+        render(res.body);
+        mountPaymentElement(res.body);
+      })
+      .catch(function () {
+        say("bad", "We could not reach the payment service. Please check " +
+          "your connection and reload the page.");
+      });
+  }
+
+  // Asked by the booking page, after the booking was changed there: take the
+  // new total from the backend and update the open card form, which keeps
+  // whatever the customer has typed.
+  function refresh() {
+    if (!ready || busy || settled) return;
+
+    postIntent()
+      .then(function (res) {
+        if (res.status !== 200) { handleRefusal(res); return; }
+
+        showAmount(res.body);
+        remaining = res.body.hold_seconds_remaining;
+        loadBooking();
+
+        return elements.fetchUpdates().then(refreshButton);
+      })
+      .catch(function () {});
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!embedded || event.origin !== location.origin) return;
+    if (event.source !== window.parent) return;
+    if (!event.data || event.data.source !== "booking-page") return;
+    if (event.data.action === "refresh") refresh();
+    if (event.data.action === "booking" && event.data.bookingId) {
+      setBooking(String(event.data.bookingId));
+    }
+  });
+
+  // Prefills the contact details already on the booking. If it fails the
+  // fields simply stay editable; the intent call reports a bad booking.
+  function loadBooking() {
+    getBooking()
+      .then(function (res) {
+        if (res.status !== 200) return;
+
+        var booking = res.body;
+
+        setIfEmpty("name", booking.customer_name);
+        lockEmail(booking.customer_email);
+        setIfEmpty("phone", booking.customer_phone);
+
+        document.getElementById("tickets").textContent = booking.quantity;
+        showBreakdown(booking);
+
+        if (booking.status === "pending" && !settled) {
+          var edit = "booking.html?booking_id=" + encodeURIComponent(booking.id) +
+            "&event_id=" + encodeURIComponent(booking.event_id) +
+            (API_BASE ? "&api=" + encodeURIComponent(API_BASE) : "");
+
+          document.getElementById("edit-link").href = edit;
+          document.getElementById("edit").classList.remove("hidden");
+        }
+      })
+      .catch(function () {});
+  }
+
+  // The booking's own figures; the amount charged is still the intent's.
+  function showBreakdown(booking) {
+    function show(id, amount, visible) {
+      document.getElementById("row-" + id).classList.toggle("hidden", !visible);
+      document.getElementById(id).textContent = amount;
+    }
+
+    var currency = "usd";
+
+    show("ticket-subtotal", formatMoney(booking.ticket_subtotal, currency), true);
+    show("discount", "−" + formatMoney(booking.discount_amount, currency),
+      Number(booking.discount_amount) > 0);
+    show("protection", formatMoney(booking.protection_amount, currency),
+      !!booking.ticket_protection);
+    show("add-ons", formatMoney(booking.add_ons_subtotal, currency),
+      Number(booking.add_ons_subtotal) > 0);
+  }
+
+  function setIfEmpty(id, value) {
+    var input = document.getElementById(id);
+    if (value && !input.value) input.value = value;
+  }
+
+  // The email given at booking time stays the booking's email (the backend
+  // ignores a different one), so it is shown as saved and cannot be edited.
+  // A booking without one leaves the field optional and editable.
+  function lockEmail(value) {
+    if (!value) return;
+
+    var input = document.getElementById("email");
+    input.value = value;
+    input.readOnly = true;
+    document.getElementById("email-note").textContent = "(saved with your booking)";
+  }
+
+  function formatMoney(amount, currency) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency.toUpperCase()
+      }).format(Number(amount));
+    } catch (err) {
+      return amount + " " + currency.toUpperCase();
+    }
+  }
+
+  function render(intent) {
+    // Always the backend's amount; this page never computes or sends one.
+    showAmount(intent);
+
+
+    remaining = intent.hold_seconds_remaining;
+    form.classList.remove("hidden");
+    refreshButton();
+    tick();
+  }
+
+  function showAmount(intent) {
+    amountCents = intent.amount_cents;
+    amountText = formatMoney(intent.amount, intent.currency);
+    document.getElementById("amount").textContent = amountText;
+  }
+
+  function mountPaymentElement(intent) {
+    stripe = window.Stripe(intent.publishable_key);
+
+    elements = stripe.elements({
+      clientSecret: intent.client_secret,
+      appearance: {
+        theme: "stripe",
+        variables: { colorPrimary: "#12603a", borderRadius: "6px" }
+      }
+    });
+
+    // For cards Stripe only asks for what it needs (country, postal code);
+    // name, email and phone come from the fields above, so Stripe's Link
+    // sign-up, which asks for them again, is turned off.
+    var paymentElement = elements.create("payment", {
+      wallets: { link: "never" }
+    });
+
+    paymentElement.on("ready", function () {
+      ready = true;
+      refreshButton();
+    });
+
+    paymentElement.on("loaderror", function (event) {
+      say("bad", (event.error && event.error.message) ||
+        "Could not load the secure payment form.");
+    });
+
+    paymentElement.mount("#payment-element");
+  }
+
+  // ---- countdown -------------------------------------------------
+
+  function tick() {
+    if (settled) return;
+
+    if (remaining <= 0) {
+      // A payment already submitted is still confirmed by the webhook.
+      if (busy) return;
+
+      document.getElementById("countdown").textContent = "expired";
+      finish("bad", "Your reservation expired. You have not been charged. " +
+        "Please start a new booking.");
+      return;
+    }
+
+    remaining -= 1;
+
+    var m = Math.floor(remaining / 60);
+    var s = remaining % 60;
+
+    document.getElementById("countdown").textContent =
+      m + ":" + String(s).padStart(2, "0");
+
+    setTimeout(tick, 1000);
+  }
+
+  // ---- submit ----------------------------------------------------
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    if (!ready || busy || settled) return;
+
+    var contact = {
+      customer_name:  document.getElementById("name").value.trim(),
+      customer_email: document.getElementById("email").value.trim(),
+      customer_phone: document.getElementById("phone").value.trim()
+    };
+
+    // Tickets are sent to this address; the booking page may not have had it.
+    if (embedded && !contact.customer_email) {
+      say("bad", "Please enter your email address. Your tickets are sent to it.");
+      document.getElementById("email").focus();
+      return;
+    }
+
+    busy = true;
+    refreshButton();
+    clearStatus();
+
+    // Card fields are checked by Stripe before anything else happens.
+    elements.submit()
+      .then(function (result) {
+        if (result.error) throw result.error;
+
+        // Saves the contact details on the booking, and checks the booking
+        // can still be paid, before any money moves.
+        return postIntent(contact);
+      })
+      .then(function (res) {
+        if (res.status !== 200) {
+          busy = false;
+          if (!handleRefusal(res)) refreshButton();
+          return null;
+        }
+
+        // The booking was changed since this page loaded (e.g. on the
+        // booking page in another tab) and the backend moved the
+        // PaymentIntent to the new total. Never charge an amount the
+        // customer has not seen: show it and let them press Pay again.
+        if (res.body.amount_cents !== amountCents) {
+          showAmount(res.body);
+          loadBooking();
+
+          return elements.fetchUpdates().then(function () {
+            busy = false;
+            refreshButton();
+            say("warn", "Your booking total has changed to " + amountText +
+              ". Please review it and press Pay again.");
+          });
+        }
+
+        return stripe.confirmPayment({
+          elements: elements,
+          confirmParams: {
+            // Only used if the card's bank needs a full-page redirect.
+            return_url: location.href,
+            payment_method_data: { billing_details: billingDetails(contact) }
+          },
+          // 3D Secure is completed in Stripe's own popup without leaving.
+          redirect: "if_required"
+        }).then(handleConfirmResult);
+      })
+      .catch(function (err) {
+        busy = false;
+        refreshButton();
+
+        if (err && err.type) {
+          // A Stripe error: field validation, a decline, a failed 3DS.
+          say("bad", err.message || "Your payment could not be completed.");
+        } else {
+          say("bad", "We could not reach the payment service. Please check " +
+            "your connection and try again. You have not been charged.");
+        }
+      });
+  });
+
+  function billingDetails(contact) {
+    var details = {};
+
+    if (contact.customer_name)  details.name  = contact.customer_name;
+    if (contact.customer_email) details.email = contact.customer_email;
+    if (contact.customer_phone) details.phone = contact.customer_phone;
+
+    return details;
+  }
+
+  function handleConfirmResult(result) {
+    if (result.error) {
+      // Declined, failed 3D Secure or invalid card. The same PaymentIntent
+      // takes another attempt while the reservation is held.
+      busy = false;
+      refreshButton();
+
+      say("bad", (result.error.message || "Your payment was declined.") +
+        " You can try again with the same or another card.");
+      return;
+    }
+
+    var status = result.paymentIntent && result.paymentIntent.status;
+
+    if (status === "succeeded" || status === "processing") {
+      waitForPaid();
+      return;
+    }
+
+    busy = false;
+    refreshButton();
+    say("bad", "Your payment was not completed. Please try again.");
+  }
+
+  // ---- confirmation ----------------------------------------------
+
+  // Stripe accepting the card is not the end: the booking is paid when the
+  // backend says so, after Stripe's webhook.
+  function waitForPaid() {
+    tellOpener("submitted");
+    busy = true;
+    settled = true;
+    refreshButton();
+    form.classList.add("hidden");
+    document.getElementById("hold").classList.add("hidden");
+    document.getElementById("edit").classList.add("hidden");
+    say("info", "Payment received. Confirming your booking…");
+
+    var deadline = Date.now() + POLL_TIMEOUT_MS;
+
+    function poll() {
+      getBooking()
+        .then(function (res) {
+          var status = res.body && res.body.status;
+
+          if (res.status === 200 && status === "paid") {
+            say("ok", "Payment confirmed. Your booking is paid and your " +
+              "tickets have been issued.");
+            showBackLink("ok");
+            tellOpener("settled");
+            return;
+          }
+
+          if (res.status === 200 && status !== "pending") {
+            say("warn", "Your payment was received, but the booking is " +
+              status + ". Please contact us; you will not be charged twice.");
+            return;
+          }
+
+          again();
+        })
+        .catch(again);
+    }
+
+    function again() {
+      if (Date.now() > deadline) {
+        say("warn", "Your payment was received and is still being " +
+          "confirmed. Please do not pay again. Reload this page later to " +
+          "check, or contact us if it does not update.");
+        return;
+      }
+
+      setTimeout(poll, POLL_INTERVAL_MS);
+    }
+
+    poll();
+  }
+
+  boot();
+})();
+</script>
+
+</body>
+</html>
