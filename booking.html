@@ -623,9 +623,7 @@
     <p class="savings hidden" id="savings"></p>
     <p class="meta" id="total-note"></p>
     <div class="notice hidden" id="unsaved">
-      You have changes that are not saved yet. Update your booking to see
-      the new total.
-    </div>
+      </div>
     <button type="button" id="primary" disabled>Reserve tickets</button>
     <div id="status"></div>
   </aside>
@@ -1473,7 +1471,9 @@
     $("savings").classList.toggle("hidden", !showSaving);
     if (showSaving) $("savings").textContent = "You're saving " + money(saving.discount_amount);
 
-    $("unsaved").classList.toggle("hidden", !isDirty());
+    var unsavedText = unsavedMessage();
+    $("unsaved").textContent = unsavedText;
+    $("unsaved").classList.toggle("hidden", !unsavedText);
 
     var btn = $("primary");
 
@@ -1534,11 +1534,7 @@
   function render() {
     scheduleAutosave();
     showPaymentWhenTickets();
-    if (!state.booking) {
-      $("pay-placeholder").textContent =
-        "Enter your email and accept the waiver to continue to payment.";
-      $("pay-placeholder").classList.remove("hidden");
-    }
+    applyPayGate();
     renderTickets();
     renderAddOns();
     renderDiscount();
@@ -1855,6 +1851,70 @@
 
     if (state.booking && isDirty()) save(); else render();
   });
+
+  function emailValidNow() {
+    return L.isValidEmail((state.selection.email || "").trim());
+  }
+
+  function missingRequirements() {
+    var need = [];
+
+    if (!emailValidNow()) need.push("your email");
+    if (!$("waiver").checked) need.push("the waiver");
+    return need;
+  }
+
+  // Payment needs a valid email and the waiver. Before a booking exists the
+  // card form can be filled in; once one exists and either is taken away,
+  // the form is hidden (what was typed is kept) until both are back.
+  var gateShown = false;
+
+  function applyPayGate() {
+    if (state.frozen || state.submitted) return;
+
+    var need = missingRequirements();
+
+    if (need.length) {
+      $("pay-placeholder").textContent = need.length === 2
+        ? "Enter your email and accept the waiver to continue to payment."
+        : need[0] === "your email"
+          ? "Enter your email to continue to payment."
+          : "Accept the waiver to continue to payment.";
+      $("pay-placeholder").classList.remove("hidden");
+      if (state.booking && paymentOpen) $("pay-frame").classList.add("hidden");
+      gateShown = true;
+    } else if (gateShown) {
+      gateShown = false;
+      if (state.booking && L.isFree(state.booking)) {
+        $("pay-placeholder").textContent =
+          "There is nothing to pay. Confirm your booking to get your tickets.";
+        return;
+      }
+      $("pay-placeholder").classList.add("hidden");
+      $("pay-frame").classList.remove("hidden");
+    }
+  }
+
+  // Why the saved booking is not up to date, if it is not. A change that is
+  // simply waiting for the autosave shows nothing.
+  function unsavedMessage() {
+    if (!isDirty() || state.busy || state.frozen) return "";
+
+    var need = missingRequirements();
+
+    if (need.length) {
+      return "Your changes will be saved once you enter your email and " +
+        "accept the waiver.";
+    }
+    if (!L.ticketItems(state.selection.tickets).length) {
+      return "Choose at least one ticket to save your changes.";
+    }
+    if (JSON.stringify(state.selection) === lastTried) {
+      return "Your changes could not be saved. Please check the details " +
+        "above and try again.";
+    }
+    return "";
+  }
 
   // A valid email is required before a booking is created or paid, so every
   // booking in the organizer portal has a customer.
