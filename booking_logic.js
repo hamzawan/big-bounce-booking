@@ -94,6 +94,8 @@
       tickets: tickets,
       addOns: addOns,
       email: booking.customer_email || "",
+      name: booking.customer_name || "",
+      phone: booking.customer_phone || "",
       ticketProtection: !!booking.ticket_protection,
       discountCode: booking.discount_id ? undefined : ""
     };
@@ -113,6 +115,12 @@
 
     var email = (selection.email || "").trim();
     if (email) body.customer_email = email;
+
+    var name = (selection.name || "").trim();
+    if (name) body.customer_name = name;
+
+    var phone = (selection.phone || "").trim();
+    if (phone) body.customer_phone = phone;
 
     var code = (selection.discountCode || "").trim();
     if (code) body.discount_code = code;
@@ -152,6 +160,13 @@
     // An email cannot be taken off a booking, only set or replaced.
     var email = (selection.email || "").trim();
     if (email && email !== (saved.email || "")) body.customer_email = email;
+
+    // Likewise the name and phone number: set or replaced, never removed.
+    var name = (selection.name || "").trim();
+    if (name && name !== (saved.name || "")) body.customer_name = name;
+
+    var phone = (selection.phone || "").trim();
+    if (phone && phone !== (saved.phone || "")) body.customer_phone = phone;
 
     return Object.keys(body).length ? body : null;
   }
@@ -200,6 +215,22 @@
   // last word; this only keeps an obvious typo from being sent.
   function isValidEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || "").trim());
+  }
+
+  // 7 to 15 digits, with an optional leading + and the usual separators;
+  // at most 20 characters, which is all the backend stores.
+  function isValidPhone(value) {
+    var v = String(value || "").trim();
+    var digits = v.replace(/\D/g, "");
+
+    return v.length <= 20 && /^\+?[0-9\s().-]+$/.test(v) &&
+      digits.length >= 7 && digits.length <= 15;
+  }
+
+  function isValidName(value) {
+    var v = String(value || "").trim();
+
+    return v.length >= 2 && v.length <= 200;
   }
 
   function toCents(amount) {
@@ -330,6 +361,8 @@
     MAX_ADD_ON_QUANTITY: MAX_ADD_ON_QUANTITY,
     ADD_ON_DROPDOWN_MAX: ADD_ON_DROPDOWN_MAX,
     isValidEmail: isValidEmail,
+    isValidPhone: isValidPhone,
+    isValidName: isValidName,
     clampQuantity: clampQuantity,
     ticketItems: ticketItems,
     addOnItems: addOnItems,

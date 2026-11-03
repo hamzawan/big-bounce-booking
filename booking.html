@@ -99,7 +99,7 @@
 
   .meta { margin: 0; font-size: 13px; color: var(--muted); }
 
-  select, input[type="text"], input[type="email"] {
+  select, input[type="text"], input[type="email"], input[type="tel"] {
     display: block;
     width: 100%;
     padding: 10px 12px;
@@ -245,6 +245,7 @@
     cursor: pointer;
   }
 
+  .waiver-list a { color: #1a6fd1; text-decoration: underline; }
   .waiver-list { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
   .check .req { margin-left: auto; color: #e8590c; font-size: 22px; font-weight: 700; }
 
@@ -567,8 +568,8 @@
             <strong>Waiver &amp; Policy Agreements</strong>
             <ul class="waiver-list">
               <li>Each attending Participant has read and agreed to the
-                <span id="waiver-link">Big Bounce America Acknowledgement,
-                Waiver and Release from Liability</span>.</li>
+                <a id="waiver-link" href="#" target="_blank" rel="noopener">Big Bounce America
+                Acknowledgement, Waiver and Release from Liability</a>.</li>
             </ul>
           </span>
           <span class="req" aria-hidden="true">*</span>
@@ -590,6 +591,16 @@
         <p class="field-error" id="discount-error"></p>
       </section>
 
+      <div id="details-section" class="hidden">
+      <section>
+        <h2>Your name <span style="color:#e8590c">*</span></h2>
+        <div class="field">
+          <input type="text" id="name" maxlength="200" autocomplete="name"
+                 placeholder="Full name">
+        </div>
+        <p class="field-error" id="name-error"></p>
+      </section>
+
       <section>
         <h2>Your email <span style="color:#e8590c">*</span></h2>
         <div class="field">
@@ -600,6 +611,16 @@
         <p class="field-error" id="email-error"></p>
         <p class="meta">Required. Your booking confirmation and tickets are linked to it.</p>
       </section>
+
+      <section>
+        <h2>Phone number <span style="color:#e8590c">*</span></h2>
+        <div class="field">
+          <input type="tel" id="phone" maxlength="20" autocomplete="tel"
+                 placeholder="+1 555 123 4567">
+        </div>
+        <p class="field-error" id="phone-error"></p>
+      </section>
+      </div>
     </div>
 
     <section id="payment-section" class="hidden">
@@ -725,7 +746,7 @@
     booking: null,        // last booking the backend returned
     saved: null,          // that booking as a selection
     selection: {
-      sessionId: null, tickets: {}, addOns: {}, email: "",
+      sessionId: null, tickets: {}, addOns: {}, email: "", name: "", phone: "",
       ticketProtection: false, discountCode: ""
     },
     busy: false,
@@ -944,7 +965,9 @@
       }
     });
 
-    setBookingInUrl(booking.id);
+    // Only a paid booking stays in the address: reloading shows its
+    // confirmation. A pending one is not kept, so a reload starts fresh.
+    setBookingInUrl(booking.status === "paid" ? booking.id : null);
 
     if (hadDiscount && !booking.discount_id && sentCode !== "") {
       say("warn", "Your discount no longer applies to the tickets you chose " +
@@ -1180,7 +1203,7 @@
   });
 
   function confirmFree() {
-    if (!emailProvided()) return;
+    if (!detailsProvided()) return;
     if (!waiverAccepted()) return;
     state.busy = true;
     clearStatus();
@@ -1214,7 +1237,7 @@
   // ---- saving ----------------------------------------------------
 
   function save() {
-    if (!emailProvided()) return;
+    if (!detailsProvided()) return;
     if (!waiverAccepted()) return;
     if (locked()) return;
 
@@ -1477,14 +1500,14 @@
 
     var btn = $("primary");
 
-    // The booking saves itself, so the button is only there to confirm a
-    // free booking, or to save at once.
+    // The button only creates the booking (and confirms a free one); later
+    // changes save themselves, so there is no "Update booking" button.
     btn.classList.toggle("hidden", !!state.frozen ||
-      (!!state.booking && !isDirty() && !L.isFree(state.booking)));
+      (!!state.booking && !L.isFree(state.booking)));
     // Needs tickets and a well-formed email before anything is saved.
     btn.disabled = state.busy || state.leaving ||
       L.ticketItems(state.selection.tickets).length === 0 ||
-      !L.isValidEmail((state.selection.email || "").trim());
+      missingRequirements().length > 0;
     btn.textContent = state.busy ? "Saving…"
       : state.leaving ? "Opening payment…"
       : !state.booking ? "Reserve tickets"
@@ -1495,9 +1518,9 @@
   }
 
   // ---- autosave --------------------------------------------------
-  // There is no "reserve" step: once the tickets and a valid email are in,
-  // the booking is created, and every later change is saved, a moment after
-  // the customer stops. The card form follows the saved booking.
+  // The booking is created by "Reserve tickets" (needs a ticket, a valid email
+  // and the waiver); every later change is saved, a moment after the customer
+  // stops. The card form follows the saved booking.
   var autosaveTimer = null;
   var lastTried = null;
   var AUTOSAVE_MS = 800;
@@ -1506,9 +1529,10 @@
     clearTimeout(autosaveTimer);
 
     if (state.busy || state.leaving || state.submitted || state.frozen) return;
-    if (!$("waiver").checked) return;
-    // A booking is only created once a valid email is given.
-    if (!L.isValidEmail((state.selection.email || "").trim())) return;
+    // A booking is only created by the "Reserve tickets" button; autosave
+    // just keeps an existing booking up to date.
+    if (!state.booking) return;
+    if (missingRequirements().length) return;
     if (!L.ticketItems(state.selection.tickets).length) return;
     if (state.booking && !isDirty()) return;
 
@@ -1529,6 +1553,8 @@
     var any = L.ticketItems(state.selection.tickets).length > 0;
 
     $("payment-section").classList.toggle("hidden", confirmed || !formShown || !any);
+    // Name, email and phone appear once a ticket is chosen.
+    $("details-section").classList.toggle("hidden", !any);
   }
 
   function render() {
@@ -1544,6 +1570,8 @@
     $("protection").disabled = locked();
     $("waiver").disabled = locked();
     $("email").disabled = locked();
+    $("name").disabled = locked();
+    $("phone").disabled = locked();
     showEmailState(emailTouched);
 
     renderSummary();
@@ -1602,7 +1630,7 @@
   }
 
   function openPayment() {
-    if (!emailProvided()) return;
+    if (!detailsProvided()) return;
     if (!waiverAccepted()) return;
     if (paymentOpen) return;
 
@@ -1781,10 +1809,36 @@
   $("email").addEventListener("input", function () {
     state.selection.email = this.value;
     showEmailState(emailTouched);
+    applyPayGate();
     renderSummary();
     refreshPaymentSection();
     scheduleAutosave();
   });
+
+  // Name and phone: same as the email, with the error shown after leaving
+  // the field.
+  [["name", L.isValidName, "Enter your full name."],
+   ["phone", L.isValidPhone, "Enter a valid phone number, like +1 555 123 4567."]]
+    .forEach(function (f) {
+      var key = f[0];
+
+      $(key).addEventListener("input", function () {
+        state.selection[key] = this.value;
+        if (f[1](this.value.trim())) {
+          $(key + "-error").textContent = "";
+          this.classList.remove("invalid");
+        }
+        render();
+      });
+
+      $(key).addEventListener("blur", function () {
+        var value = this.value.trim();
+        var bad = !!value && !f[1](value);
+
+        $(key + "-error").textContent = bad ? f[2] : "";
+        this.classList.toggle("invalid", bad);
+      });
+    });
 
   $("email").addEventListener("blur", function () {
     emailTouched = true;
@@ -1803,8 +1857,11 @@
       L.ticketItems(sel.tickets).length > 0 ||
       L.addOnItems(sel.addOns).length > 0 ||
       !!(sel.email || "").trim() ||
+      !!(sel.name || "").trim() ||
+      !!(sel.phone || "").trim() ||
       !!sel.discountCode ||
-      !!sel.ticketProtection
+      !!sel.ticketProtection ||
+      $("waiver").checked
     );
   }
 
@@ -1859,7 +1916,9 @@
   function missingRequirements() {
     var need = [];
 
+    if (!L.isValidName(state.selection.name)) need.push("your name");
     if (!emailValidNow()) need.push("your email");
+    if (!L.isValidPhone(state.selection.phone)) need.push("your phone number");
     if (!$("waiver").checked) need.push("the waiver");
     return need;
   }
@@ -1869,19 +1928,37 @@
   // the form is hidden (what was typed is kept) until both are back.
   var gateShown = false;
 
+  // "Enter your name, email and phone number and accept the waiver to ..."
+  function requirementsMessage(need) {
+    var fields = need.filter(function (n) { return n !== "the waiver"; })
+      .map(function (n) { return n.replace("your ", ""); });
+    var waiver = need.indexOf("the waiver") !== -1;
+    var text = "";
+
+    if (fields.length) {
+      text = "Enter your " + (fields.length > 1
+        ? fields.slice(0, -1).join(", ") + " and " + fields[fields.length - 1]
+        : fields[0]);
+    }
+    if (waiver) text += (text ? " and accept" : "Accept") + " the waiver";
+
+    return text + " to continue to payment.";
+  }
+
   function applyPayGate() {
     if (state.frozen || state.submitted) return;
 
     var need = missingRequirements();
 
     if (need.length) {
-      $("pay-placeholder").textContent = need.length === 2
-        ? "Enter your email and accept the waiver to continue to payment."
-        : need[0] === "your email"
-          ? "Enter your email to continue to payment."
-          : "Accept the waiver to continue to payment.";
+      $("pay-placeholder").textContent = requirementsMessage(need);
       $("pay-placeholder").classList.remove("hidden");
       if (state.booking && paymentOpen) $("pay-frame").classList.add("hidden");
+      gateShown = true;
+    } else if (!state.booking) {
+      $("pay-placeholder").textContent =
+        "Click \u201cReserve tickets\u201d to continue to payment.";
+      $("pay-placeholder").classList.remove("hidden");
       gateShown = true;
     } else if (gateShown) {
       gateShown = false;
@@ -1903,8 +1980,8 @@
     var need = missingRequirements();
 
     if (need.length) {
-      return "Your changes will be saved once you enter your email and " +
-        "accept the waiver.";
+      return "Your changes will be saved once your name, email and phone " +
+        "number are filled in and the waiver is accepted.";
     }
     if (!L.ticketItems(state.selection.tickets).length) {
       return "Choose at least one ticket to save your changes.";
@@ -1916,20 +1993,30 @@
     return "";
   }
 
-  // A valid email is required before a booking is created or paid, so every
-  // booking in the organizer portal has a customer.
-  function emailProvided() {
-    var value = ($("email").value || "").trim();
+  // Name, email and phone are required before a booking is created or paid,
+  // so every booking in the organizer portal has a customer.
+  function detailsProvided() {
+    var checks = [
+      ["name", L.isValidName, "Enter your name to continue.",
+       "Enter your full name."],
+      ["email", L.isValidEmail, "Enter your email address to continue.",
+       "Enter a valid email address, like you@example.com."],
+      ["phone", L.isValidPhone, "Enter your phone number to continue.",
+       "Enter a valid phone number, like +1 555 123 4567."]
+    ];
+    var ok = true;
 
-    if (L.isValidEmail(value)) return true;
-    emailTouched = true;
-    showEmailState(true);
-    $("email-error").textContent = value
-      ? "Enter a valid email address, like you@example.com."
-      : "Enter your email address to continue.";
-    $("email").classList.add("invalid");
-    $("email").focus();
-    return false;
+    checks.forEach(function (c) {
+      var value = ($(c[0]).value || "").trim();
+      var good = c[1](value);
+
+      if (c[0] === "email") { emailTouched = true; showEmailState(true); }
+      $(c[0] + "-error").textContent = good ? "" : (value ? c[3] : c[2]);
+      $(c[0]).classList.toggle("invalid", !good);
+      if (!good && ok) { $(c[0]).focus(); ok = false; }
+    });
+
+    return ok;
   }
 
   // The waiver is required before a booking is created or paid.
@@ -1949,15 +2036,13 @@
     render();
   });
 
-  // Link to the waiver document when its address is configured (config.js).
-  if (window.WAIVER_URL) {
-    var wl = document.createElement("a");
-    wl.href = window.WAIVER_URL;
-    wl.target = "_blank";
-    wl.rel = "noopener";
-    wl.textContent = $("waiver-link").textContent;
-    $("waiver-link").replaceWith(wl);
-  }
+  // The waiver text links to the document set as window.WAIVER_URL in
+  // config.js. Clicking the link must not tick the box.
+  $("waiver-link").href = window.WAIVER_URL || "#";
+  $("waiver-link").addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (!window.WAIVER_URL) event.preventDefault();
+  });
 
   $("primary").addEventListener("click", function () {
     if (locked()) return;
@@ -2024,6 +2109,8 @@
       $("slot-section").classList.toggle("hidden", state.slots.length < 2 && !state.slots[0].id);
 
       $("email").value = state.selection.email || "";
+      $("name").value = state.selection.name || "";
+      $("phone").value = state.selection.phone || "";
       $("booking-form").classList.remove("hidden");
       loadIdleFrame();
       syncPayment();   // a booking reopened from the address
@@ -2091,6 +2178,8 @@
           if (booking) adoptBooking(booking);
           $("slot").value = state.selection.sessionId || "";
           $("email").value = state.selection.email || "";
+      $("name").value = state.selection.name || "";
+      $("phone").value = state.selection.phone || "";
           render();
           loadAddOns(eventId);
         });

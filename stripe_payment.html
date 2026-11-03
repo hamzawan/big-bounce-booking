@@ -179,7 +179,10 @@
   html.embed .card { max-width: none; border: 0; padding: 18px; border-radius: 0; background: transparent; }
   html.embed h1, html.embed #summary,
   html.embed #edit, html.embed #back { display: none !important; }
-  html.embed form h2:first-child { margin-top: 0; }
+  /* Name, email and phone are already asked for on the booking page and are
+     filled in from the booking. */
+  html.embed #contact-fields { display: none !important; }
+  html.embed form > h2 { margin-top: 0; }
   /* The amount, already filled in, as a tile above the card form. */
   html.embed .total {
     margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--accent);
@@ -220,6 +223,7 @@
   </p>
 
   <form id="form" class="hidden" novalidate>
+    <div id="contact-fields">
     <h2>Your details</h2>
 
     <label>Full name <span class="optional">(optional)</span>
@@ -233,12 +237,12 @@
     <label>Phone <span class="optional">(optional)</span>
       <input id="phone" type="tel" autocomplete="tel" maxlength="20">
     </label>
+    </div>
 
     <h2>Card details</h2>
 
     <p id="card-idle" class="hidden">The card field appears here as soon as
-      your tickets and email are chosen. You can fill in your details above
-      in the meantime.</p>
+      your tickets and email are chosen.</p>
     <div id="payment-element"></div>
 
     <button type="submit" id="pay" disabled>Pay</button>
