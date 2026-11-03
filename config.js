@@ -8,4 +8,5 @@ if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
 
 // Address of the "Acknowledgement, Waiver and Release from Liability" document.
 // When set, the waiver text on the booking page links to it.
-window.WAIVER_URL = window.WAIVER_URL || "";
+window.WAIVER_URL = window.WAIVER_URL ||
+  "https://www.thebigbounceamerica.com/wp-content/uploads/2023/06/waiver-usa.pdf";
