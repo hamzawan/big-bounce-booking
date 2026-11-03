@@ -5,3 +5,7 @@
 if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
   window.PAYMENT_API_BASE = "";
 }
+
+// Address of the "Acknowledgement, Waiver and Release from Liability" document.
+// When set, the waiver text on the booking page links to it.
+window.WAIVER_URL = window.WAIVER_URL || "";

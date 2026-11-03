@@ -245,6 +245,9 @@
     cursor: pointer;
   }
 
+  .waiver-list { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+  .check .req { margin-left: auto; color: #e8590c; font-size: 22px; font-weight: 700; }
+
   .check input { margin-top: 4px; width: 18px; height: 18px; flex-shrink: 0; }
 
   .inline { display: flex; gap: 8px; }
@@ -554,6 +557,23 @@
             tickets and shown in your total once your booking is saved.</span>
           </span>
         </label>
+      </section>
+
+      <section id="waiver-section">
+        <h2>Waiver</h2>
+        <label class="check" id="waiver-box">
+          <input type="checkbox" id="waiver" required>
+          <span>
+            <strong>Waiver &amp; Policy Agreements</strong>
+            <ul class="waiver-list">
+              <li>Each attending Participant has read and agreed to the
+                <span id="waiver-link">Big Bounce America Acknowledgement,
+                Waiver and Release from Liability</span>.</li>
+            </ul>
+          </span>
+          <span class="req" aria-hidden="true">*</span>
+        </label>
+        <p class="field-error" id="waiver-error"></p>
       </section>
 
       <section>
@@ -1163,6 +1183,7 @@
   });
 
   function confirmFree() {
+    if (!waiverAccepted()) return;
     state.busy = true;
     clearStatus();
     render();
@@ -1195,6 +1216,7 @@
   // ---- saving ----------------------------------------------------
 
   function save() {
+    if (!waiverAccepted()) return;
     if (locked()) return;
 
     var errors = L.validate(state.selection, limits());
@@ -1483,6 +1505,7 @@
     clearTimeout(autosaveTimer);
 
     if (state.busy || state.leaving || state.submitted || state.frozen) return;
+    if (!$("waiver").checked) return;
     // One ticket is enough: the email can be given in the payment details.
     var typed = (state.selection.email || "").trim();
     if (typed && !L.isValidEmail(typed)) return;
@@ -1518,6 +1541,7 @@
     $("slot").disabled = locked();
     $("protection").checked = !!state.selection.ticketProtection;
     $("protection").disabled = locked();
+    $("waiver").disabled = locked();
     $("email").disabled = locked();
     showEmailState(emailTouched);
 
@@ -1577,6 +1601,7 @@
   }
 
   function openPayment() {
+    if (!waiverAccepted()) return;
     if (paymentOpen) return;
 
     paymentOpen = true;
@@ -1825,8 +1850,36 @@
     if (state.booking && isDirty()) save(); else render();
   });
 
+  // The waiver is required before a booking is created or paid.
+  function waiverAccepted() {
+    if ($("waiver").checked) {
+      $("waiver-error").textContent = "";
+      return true;
+    }
+    $("waiver-error").textContent =
+      "You must accept the Waiver & Policy Agreements to continue.";
+    $("waiver").focus();
+    return false;
+  }
+
+  $("waiver").addEventListener("change", function () {
+    if (this.checked) $("waiver-error").textContent = "";
+    render();
+  });
+
+  // Link to the waiver document when its address is configured (config.js).
+  if (window.WAIVER_URL) {
+    var wl = document.createElement("a");
+    wl.href = window.WAIVER_URL;
+    wl.target = "_blank";
+    wl.rel = "noopener";
+    wl.textContent = $("waiver-link").textContent;
+    $("waiver-link").replaceWith(wl);
+  }
+
   $("primary").addEventListener("click", function () {
     if (locked()) return;
+    if (!waiverAccepted()) return;
 
     if (!state.booking || isDirty()) {
       save();
