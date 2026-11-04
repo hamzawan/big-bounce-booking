@@ -299,3 +299,8 @@ test("discountFor prices percentage and fixed codes, capped at the eligible tick
   assert.equal(L.discountFor([base], selection({ tickets: {}, discountCode: "SAVE10" }), types).reason, "nothing");
   assert.equal(L.discountFor([base], selection({ tickets: { [GENERAL]: 1 }, discountCode: "NOPE" }), types).reason, "unknown");
 });
+
+test("protectionFor is 15% of the tickets after the discount", function () {
+  assert.equal(L.protectionFor("40.00", "4.00"), "5.40");
+  assert.equal(L.protectionFor("40.00"), "6.00");
+});

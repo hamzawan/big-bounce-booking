@@ -283,6 +283,16 @@
     return { amount: fromCents(Math.min(cents, eligible)), discount: d };
   }
 
+  // Ticketing Protection is 15% of the tickets after any discount; a preview
+  // only, the backend prices the booking.
+  var PROTECTION_RATE = 0.15;
+
+  function protectionFor(ticketSubtotal, discountAmount) {
+    var net = Math.max(0, toCents(ticketSubtotal) - toCents(discountAmount || 0));
+
+    return fromCents(Math.round(net * PROTECTION_RATE));
+  }
+
   // Before a booking exists: tickets and add-ons at their listed prices.
   // Discount and Ticketing Protection are only ever the backend's.
   function estimate(selection, ticketTypes, addOnCatalog) {
@@ -414,6 +424,7 @@
     validate: validate,
     estimate: estimate,
     discountFor: discountFor,
+    protectionFor: protectionFor,
     breakdown: breakdown,
     isFree: isFree,
     detailOf: detailOf,

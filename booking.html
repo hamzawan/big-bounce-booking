@@ -249,6 +249,7 @@
   .waiver-list { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
   .check .req { margin-left: auto; color: #e8590c; font-size: 22px; font-weight: 700; }
 
+  .check .plus { color: #1f9d55; margin-right: 4px; }
   .check input { margin-top: 4px; width: 18px; height: 18px; flex-shrink: 0; }
 
   .inline { display: flex; gap: 8px; }
@@ -548,14 +549,19 @@
         <p class="field-error" id="addons-error"></p>
       </section>
 
-      <section>
+      <section id="protection-section" class="hidden">
         <h2>Ticketing Protection</h2>
         <label class="check">
           <input type="checkbox" id="protection">
           <span>
-            <strong>Protect my tickets</strong><br>
-            <span class="meta">Optional. The amount is calculated from your
-            tickets and shown in your total once your booking is saved.</span>
+            <strong><span class="plus">+15%</span> Add Ticket Protection</strong><br>
+            <span class="meta">Purchasing Ticket Protection allows you to
+            cancel or reschedule your tickets at any time for any reason up to
+            12 hours prior to your scheduled session. You will be reimbursed
+            for the full face value amount of each ticket, less the cost of
+            ticket protection, taxes and fees. This policy does not apply to
+            bookings made less than 12 hours in advance. If you do not have
+            Ticket Protection, then all sales are final.</span>
           </span>
         </label>
       </section>
@@ -1530,13 +1536,18 @@
       } else if (state.selection.discountCode && !preview) {
         html += row("Discount code", escapeHtml(state.selection.discountCode.toUpperCase()));
       }
-      if (state.selection.ticketProtection) html += row("Ticketing Protection", "When you reserve");
+      var protect = state.selection.ticketProtection
+        ? L.protectionFor(e.ticket_subtotal, off) : "0.00";
+      if (!(Number(e.ticket_subtotal) > 0)) protect = "0.00";
+
+      if (state.selection.ticketProtection && Number(e.ticket_subtotal) > 0) {
+        html += row("Ticketing Protection", money(protect));
+      }
       if (Number(e.add_ons_subtotal) > 0) html += row("Add-ons", money(e.add_ons_subtotal));
 
       $("total-label").textContent = "Estimated total";
-      $("total").textContent = money(Math.max(0, Number(e.total) - Number(off)).toFixed(2));
-      $("total-note").textContent = "Final prices, discounts and Ticketing " +
-        "Protection are confirmed when you reserve.";
+      $("total").textContent = money(Math.max(0, Number(e.total) - Number(off) + Number(protect)).toFixed(2));
+      $("total-note").textContent = "The final total is confirmed when you reserve.";
     }
 
     $("breakdown").innerHTML = html;
@@ -1609,6 +1620,8 @@
     $("payment-section").classList.toggle("hidden", confirmed || !formShown || !any);
     // Name, email and phone appear once a ticket is chosen.
     $("details-section").classList.toggle("hidden", !any);
+    // Ticketing Protection only makes sense with a ticket chosen.
+    $("protection-section").classList.toggle("hidden", !any);
   }
 
   function render() {
