@@ -582,11 +582,9 @@
         <div class="inline" id="discount-entry">
           <input type="text" id="discount" maxlength="50" autocomplete="off"
                  placeholder="Enter code">
-          <button type="button" class="btn" id="discount-apply">Apply</button>
         </div>
         <div class="applied hidden" id="discount-applied">
           <span id="discount-label"></span>
-          <button type="button" class="btn" id="discount-remove">Remove</button>
         </div>
         <p class="field-error" id="discount-error"></p>
       </section>
@@ -735,6 +733,7 @@
     ticketTypes: {},      // id -> ticket type, every slot
     addOns: {},           // id -> { id, name, description, price, image, available }
     addOnsStatus: "loading",
+    discounts: null,      // the event's active discounts, null until loaded
     booking: null,        // last booking the backend returned
     saved: null,          // that booking as a selection
     selection: {
@@ -795,6 +794,46 @@
 
         if (found.length < res.body.total && n < MAX_ADD_ON_PAGES &&
             (res.body.results || []).length) {
+          return page(n + 1);
+        }
+
+        return found;
+      });
+    }
+
+    return page(1);
+  }
+
+  // TEMPORARY: the discount list needs an organizer token until the backend
+  // makes it public. The token is asked for once, kept for this tab, and
+  // dropped as soon as the list loads without one.
+  function fetchDiscounts(eventId) {
+    var found = [];
+    var asked = false;
+
+    function url(n) {
+      return API_BASE + "/api/v1/organizer/discounts/list/?event_id=" +
+        encodeURIComponent(eventId) + "&status=active&page=" + n;
+    }
+
+    function page(n) {
+      return request("GET", url(n), undefined, getOrganizerToken()).then(function (res) {
+        if ((res.status === 401 || res.status === 403) && !asked) {
+          asked = true;
+          clearOrganizerToken();
+          var token = window.prompt("Organizer token (temporary, for discount codes):");
+
+          if (token && token.trim()) {
+            try { sessionStorage.setItem(TOKEN_KEY, token.trim()); } catch (e) {}
+            return page(n);
+          }
+        }
+
+        if (res.status !== 200) throw new Error("discounts HTTP " + res.status);
+
+        found = found.concat(res.body.results || []);
+
+        if (found.length < res.body.total && n < 20 && (res.body.results || []).length) {
           return page(n + 1);
         }
 
@@ -1414,7 +1453,6 @@
     var code = state.selection.discountCode;
     var applied = code === undefined || !!code;
 
-    $("discount-entry").classList.toggle("hidden", applied);
     $("discount-applied").classList.toggle("hidden", !applied);
 
     var confirmed = state.booking && state.booking.discount_id && !isDirty();
@@ -1423,12 +1461,34 @@
       $("discount-label").textContent = (code ? "Code " + code.toUpperCase() : "Discount") +
         (confirmed ? " applied – you save " + money(state.booking.discount_amount)
           : state.booking ? " – not saved yet"
-          : " – checked when you reserve");
+          : previewNote(code));
     }
 
     $("discount").disabled = locked();
-    $("discount-apply").disabled = locked();
-    $("discount-remove").disabled = locked();
+  }
+
+  var REASONS = {
+    unknown: " – code not recognised",
+    inactive: " – code is not active",
+    used_up: " – code has been fully used",
+    other_session: " – code is not valid for this time slot",
+    nothing: " – choose eligible tickets to use this code"
+  };
+
+  // The code's preview before a booking exists, or null when the list
+  // could not be loaded (the backend then checks it at reserve).
+  function codePreview() {
+    if (!state.discounts || !state.selection.discountCode) return null;
+
+    return L.discountFor(state.discounts, state.selection, state.ticketTypes);
+  }
+
+  function previewNote(code) {
+    var p = codePreview();
+
+    if (!p) return " – checked when you reserve";
+    if (p.discount) return " applied – you save " + money(p.amount);
+    return REASONS[p.reason] || "";
   }
 
   function row(label, value) {
@@ -1461,12 +1521,20 @@
       var e = L.estimate(state.selection, state.ticketTypes, state.addOns);
 
       html += row("Tickets", money(e.ticket_subtotal));
-      if (state.selection.discountCode) html += row("Discount", "When you reserve");
+      var preview = codePreview();
+      var off = preview && preview.discount ? preview.amount : "0.00";
+
+      if (preview && preview.discount) {
+        html += row("Discount (" + escapeHtml(state.selection.discountCode.toUpperCase()) + ")",
+          "−" + money(off));
+      } else if (state.selection.discountCode && !preview) {
+        html += row("Discount code", escapeHtml(state.selection.discountCode.toUpperCase()));
+      }
       if (state.selection.ticketProtection) html += row("Ticketing Protection", "When you reserve");
       if (Number(e.add_ons_subtotal) > 0) html += row("Add-ons", money(e.add_ons_subtotal));
 
       $("total-label").textContent = "Estimated total";
-      $("total").textContent = money(e.total);
+      $("total").textContent = money(Math.max(0, Number(e.total) - Number(off)).toFixed(2));
       $("total-note").textContent = "Final prices, discounts and Ticketing " +
         "Protection are confirmed when you reserve.";
     }
@@ -1865,34 +1933,13 @@
     if (hasProgress() && !window.confirm(LEAVE_MESSAGE)) event.preventDefault();
   });
 
-  $("discount-apply").addEventListener("click", function () {
-    var code = $("discount").value.trim();
-
-    if (!code) {
-      fieldError("discount", "Enter a discount code.");
-      return;
-    }
-
+  // The code applies as it is typed: no Apply button. With a booking the
+  // autosave sends it a moment after typing stops; emptying the field
+  // removes it.
+  $("discount").addEventListener("input", function () {
     fieldError(null);
-    state.selection.discountCode = code;
-
-    // A booking is updated at once, so the code is checked now.
-    if (state.booking) save(); else render();
-  });
-
-  $("discount").addEventListener("keydown", function (event) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      $("discount-apply").click();
-    }
-  });
-
-  $("discount-remove").addEventListener("click", function () {
-    state.selection.discountCode = "";
-    $("discount").value = "";
-    fieldError(null);
-
-    if (state.booking && isDirty()) save(); else render();
+    state.selection.discountCode = this.value.trim();
+    render();
   });
 
   function emailValidNow() {
@@ -2132,6 +2179,16 @@
       .then(render);
   }
 
+  function loadDiscounts(eventId) {
+    fetchDiscounts(eventId)
+      .then(function (list) { state.discounts = list; })
+      .catch(function (err) {
+        console.warn("Discounts could not be listed:", err.message);
+        state.discounts = null;
+      })
+      .then(render);
+  }
+
   function boot() {
     var eventId = params.get("event_id");
     var bookingId = params.get("booking_id");
@@ -2168,6 +2225,7 @@
       $("phone").value = state.selection.phone || "";
           render();
           loadAddOns(eventId);
+          loadDiscounts(eventId);
         });
       })
       .catch(function (err) {

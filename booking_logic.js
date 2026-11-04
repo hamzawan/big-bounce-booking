@@ -241,6 +241,48 @@
     return (cents / 100).toFixed(2);
   }
 
+  /*
+    The discount a typed code would give, from the event's discount list.
+    A preview only: the backend prices the booking. Returns
+    { amount: "4.00", discount } or { amount: "0.00", reason } where reason
+    is "unknown" (no such code), "inactive", "used_up", "other_session",
+    "no_tickets" or "nothing" (no eligible tickets chosen).
+    A fixed discount is taken once off the eligible tickets, never below 0.
+  */
+  function discountFor(discounts, selection, ticketTypes, now) {
+    var code = normaliseCode(selection.discountCode);
+    var none = function (reason) { return { amount: "0.00", reason: reason }; };
+
+    if (!code) return none("unknown");
+
+    var d = (discounts || []).filter(function (x) {
+      return normaliseCode(x.code) === code;
+    })[0];
+
+    if (!d) return none("unknown");
+
+    var t = (now || new Date()).getTime();
+    if (d.status !== "active" ||
+        (d.start_at && new Date(d.start_at).getTime() > t) ||
+        (d.end_at && new Date(d.end_at).getTime() < t)) return none("inactive");
+    if (d.max_uses > 0 && d.uses >= d.max_uses) return none("used_up");
+    if (d.session_id && d.session_id !== selection.sessionId) return none("other_session");
+
+    var eligible = Object.keys(selection.tickets || {}).reduce(function (total, id) {
+      var type = (ticketTypes || {})[id];
+      if (!type || (d.ticket_type_id && d.ticket_type_id !== id)) return total;
+      return total + toCents(type.price) * selection.tickets[id];
+    }, 0);
+
+    if (eligible <= 0) return none("nothing");
+
+    var cents = d.discount_type === "percentage"
+      ? Math.round(eligible * Number(d.value) / 100)
+      : toCents(d.value);
+
+    return { amount: fromCents(Math.min(cents, eligible)), discount: d };
+  }
+
   // Before a booking exists: tickets and add-ons at their listed prices.
   // Discount and Ticketing Protection are only ever the backend's.
   function estimate(selection, ticketTypes, addOnCatalog) {
@@ -371,6 +413,7 @@
     updatePayload: updatePayload,
     validate: validate,
     estimate: estimate,
+    discountFor: discountFor,
     breakdown: breakdown,
     isFree: isFree,
     detailOf: detailOf,

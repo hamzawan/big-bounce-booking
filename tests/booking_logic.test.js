@@ -284,3 +284,18 @@ test("isValidEmail accepts normal addresses and rejects typos", function () {
   ["", "   ", "plain", "a@b", "a@b.", "a @b.com", "@b.com", "a@@b.com", null, undefined]
     .forEach(function (v) { assert.equal(L.isValidEmail(v), false, String(v)); });
 });
+
+test("discountFor prices percentage and fixed codes, capped at the eligible tickets", function () {
+  var types = { [GENERAL]: { price: "20.00" }, [VIP]: { price: "50.00" } };
+  var sel = selection({ tickets: { [GENERAL]: 2, [VIP]: 1 }, discountCode: " save10 " });
+  var base = { code: "SAVE10", status: "active", discount_type: "percentage", value: "10.00",
+    max_uses: 0, uses: 0, session_id: null, ticket_type_id: null, start_at: null, end_at: null };
+
+  assert.equal(L.discountFor([base], sel, types).amount, "9.00");
+  assert.equal(L.discountFor([Object.assign({}, base, { ticket_type_id: GENERAL })], sel, types).amount, "4.00");
+  assert.equal(L.discountFor([Object.assign({}, base, { discount_type: "fixed", value: "500" })], sel, types).amount, "90.00");
+  assert.equal(L.discountFor([Object.assign({}, base, { status: "expired" })], sel, types).reason, "inactive");
+  assert.equal(L.discountFor([Object.assign({}, base, { max_uses: 3, uses: 3 })], sel, types).reason, "used_up");
+  assert.equal(L.discountFor([base], selection({ tickets: {}, discountCode: "SAVE10" }), types).reason, "nothing");
+  assert.equal(L.discountFor([base], selection({ tickets: { [GENERAL]: 1 }, discountCode: "NOPE" }), types).reason, "unknown");
+});
