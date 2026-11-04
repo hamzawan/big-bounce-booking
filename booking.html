@@ -810,31 +810,15 @@
     return page(1);
   }
 
-  // TEMPORARY: the discount list needs an organizer token until the backend
-  // makes it public. The token is asked for once, kept for this tab, and
-  // dropped as soon as the list loads without one.
+  // The discount list is public; no token is needed.
   function fetchDiscounts(eventId) {
     var found = [];
-    var asked = false;
-
-    function url(n) {
-      return API_BASE + "/api/v1/organizer/discounts/list/?event_id=" +
-        encodeURIComponent(eventId) + "&status=active&page=" + n;
-    }
 
     function page(n) {
-      return request("GET", url(n), undefined, getOrganizerToken()).then(function (res) {
-        if ((res.status === 401 || res.status === 403) && !asked) {
-          asked = true;
-          clearOrganizerToken();
-          var token = window.prompt("Organizer token (temporary, for discount codes):");
+      var url = API_BASE + "/api/v1/organizer/discounts/list/?event_id=" +
+        encodeURIComponent(eventId) + "&status=active&page=" + n;
 
-          if (token && token.trim()) {
-            try { sessionStorage.setItem(TOKEN_KEY, token.trim()); } catch (e) {}
-            return page(n);
-          }
-        }
-
+      return request("GET", url).then(function (res) {
         if (res.status !== 200) throw new Error("discounts HTTP " + res.status);
 
         found = found.concat(res.body.results || []);
