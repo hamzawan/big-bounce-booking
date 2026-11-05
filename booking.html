@@ -1032,6 +1032,11 @@
   // the background, so only the ticket codes are shown here.
   // A paid booking is a receipt, not a form: the choosers are replaced by
   // what was booked, and the tickets once the backend has issued them.
+  function bookingName(booking) {
+    return String(booking.customer_name || (state.selection && state.selection.name) ||
+      ($("name") && $("name").value) || "").trim();
+  }
+
   function showConfirmation(booking) {
     var slot = state.slots.filter(function (s) { return s.id === booking.session_id; })[0];
     var place = state.event
@@ -1079,9 +1084,11 @@
         ? ", and your confirmation is on its way to " + booking.customer_email : "") + ".";
     $("conf-ref").textContent = booking.booking_number;
     $("conf-facts").innerHTML =
+      (bookingName(booking) ? fact("Name", escapeHtml(bookingName(booking))) : "") +
+      (booking.customer_email ? fact("Email", escapeHtml(booking.customer_email)) : "") +
       (slot ? fact("Date and time", escapeHtml(slot.label)) : "") +
       (place ? fact("Where", escapeHtml(place)) : "") +
-      (booking.customer_email ? fact("Email", escapeHtml(booking.customer_email)) : "");
+      (free ? "" : fact("Payment", "Successful"));
     $("conf-items").innerHTML = items.join("");
     $("confirmation").classList.remove("hidden");
 
@@ -1155,12 +1162,17 @@
         doc.setTextColor(17, 24, 39);
         doc.setFontSize(13);
         doc.text("Ticket " + (i + 1) + " of " + ticketList.length, 15, 50);
+        if (!L.isFree(b)) {
+          doc.setTextColor(22, 163, 74);
+          doc.text("Payment successful", 195, 50, { align: "right" });
+          doc.setTextColor(17, 24, 39);
+        }
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(11);
         var y = 60;
-        [["Booking number", b.booking_number], ["Date and time", slot && slot.label],
-         ["Where", place], ["Email", b.customer_email], ["Status", t.status]].forEach(function (row) {
+        [["Name", bookingName(b)], ["Email", b.customer_email], ["Booking number", b.booking_number],
+         ["Date and time", slot && slot.label], ["Where", place], ["Status", t.status]].forEach(function (row) {
           if (!row[1]) return;
           doc.setTextColor(107, 114, 128);
           doc.text(row[0], 15, y);
