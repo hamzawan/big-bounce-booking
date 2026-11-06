@@ -1369,7 +1369,8 @@
       '<button type="button" data-kind="' + kind + '" data-id="' + escapeHtml(id) +
         '" data-step="-1" aria-label="Fewer"' +
         (value <= 0 ? " disabled" : off) + '>−</button>' +
-      '<input type="number" inputmode="numeric" min="0" max="' + max + '" value="' +
+      '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="' +
+        String(max).length + '" autocomplete="off" data-max="' + max + '" value="' +
         value + '" data-kind="' + kind + '" data-id="' + escapeHtml(id) +
         '" aria-label="Quantity"' + off + '>' +
       '<button type="button" data-kind="' + kind + '" data-id="' + escapeHtml(id) +
@@ -1809,7 +1810,15 @@
 
     if (kind === "ticket") {
       var limit = limits()[id];
-      state.selection.tickets[id] = L.clampQuantity(value, limit ? limit.max : 0);
+      var cap = limit ? limit.max : 0;
+      state.selection.tickets[id] = L.clampQuantity(value, cap);
+      fieldError(null);
+      if (Number(value) > cap) {
+        fieldError("tickets", "Only " + cap + " available for " +
+          (limit ? limit.name : "this ticket") + ".");
+      }
+      render();
+      return;
     } else {
       var addOn = state.addOns[id];
       var max = addOn && addOn.available === false
@@ -1831,6 +1840,29 @@
     var bag = kind === "ticket" ? state.selection.tickets : state.selection.addOns;
 
     setQuantity(kind, id, (bag[id] || 0) + Number(button.getAttribute("data-step")));
+  });
+
+  // Whole numbers only: strip anything but digits as it is typed. The
+  // value is never rewritten mid-typing (so "40" against a limit of 20 is
+  // not cut after the "4"); an error shows instead and is capped on blur.
+  document.addEventListener("input", function (event) {
+    var input = event.target;
+    if (!input.matches || !input.matches(".stepper input")) return;
+
+    var digits = input.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+    if (digits !== input.value) input.value = digits;
+
+    // Live validation for tickets: flag a value over the limit while it is
+    // typed, and clear the message as soon as the value is valid again.
+    if (input.getAttribute("data-kind") !== "ticket") return;
+    var limit = limits()[input.getAttribute("data-id")];
+    var cap = limit ? limit.max : 0;
+    if (digits !== "" && Number(digits) > cap) {
+      fieldError("tickets", "Only " + cap + " available for " +
+        (limit ? limit.name : "this ticket") + ".");
+    } else {
+      fieldError(null);
+    }
   });
 
   document.addEventListener("change", function (event) {
