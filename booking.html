@@ -280,6 +280,8 @@
     color: var(--accent);
   }
 
+  .applied.bad { background: #fdeceb; color: var(--bad); }
+
   .savings {
     margin: 12px 0 0;
     padding: 10px 12px;
@@ -1461,6 +1463,10 @@
     var confirmed = state.booking && state.booking.discount_id && !isDirty();
 
     if (applied) {
+      var preview = state.booking ? null : codePreview();
+      var success = confirmed || (!state.booking && !!(preview && preview.discount));
+
+      $("discount-applied").classList.toggle("bad", !success);
       $("discount-label").textContent = (code ? "Code " + code.toUpperCase() : "Discount") +
         (confirmed ? " applied – you save " + money(state.booking.discount_amount)
           : state.booking ? " – not saved yet"
