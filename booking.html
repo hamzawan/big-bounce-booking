@@ -1397,7 +1397,7 @@
       return '<div class="line"><div>' +
         '<div class="name">' + escapeHtml(type.name) + '</div>' +
         '<div class="meta">' + money(type.price) + ' each · ' +
-          (limit > 0 ? limit + " left" : "Sold out") + '</div>' +
+          (limit > 0 ? Math.max(limit - qty, 0) + " left" : "Sold out") + '</div>' +
         '</div>' + stepper("ticket", type.id, qty, limit, limit > 0) + '</div>';
     }).join("");
   }
