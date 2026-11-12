@@ -741,7 +741,7 @@
     ticketTypes: {},      // id -> ticket type, every slot
     addOns: {},           // id -> { id, name, description, price, image, available }
     addOnsStatus: "loading",
-    discounts: null,      // the event's active discounts, null until loaded
+    discounts: null,      // the event's discounts, null until loaded
     booking: null,        // last booking the backend returned
     saved: null,          // that booking as a selection
     selection: {
@@ -818,7 +818,7 @@
 
     function page(n) {
       var url = API_BASE + "/api/v1/organizer/discounts/list/?event_id=" +
-        encodeURIComponent(eventId) + "&status=active&page=" + n;
+        encodeURIComponent(eventId) + "&page=" + n;
 
       return request("GET", url).then(function (res) {
         if (res.status !== 200) throw new Error("discounts HTTP " + res.status);
@@ -1478,7 +1478,7 @@
 
   var REASONS = {
     unknown: " – code not recognised",
-    inactive: " – code is not active",
+    inactive: " – This discount code has expired.",
     used_up: " – code has been fully used",
     other_session: " – code is not valid for this time slot",
     nothing: " – choose eligible tickets to use this code"
