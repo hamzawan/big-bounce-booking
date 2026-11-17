@@ -360,6 +360,25 @@
 
   #status a { color: inherit; font-weight: 600; }
 
+  /* Once paid, the receipt stands alone: no price sidebar beside it. */
+  .layout.solo { display: block; max-width: 720px; }
+  .layout.solo .summary { display: none; }
+
+  #processing { text-align: center; padding: 64px 0 56px; animation: fadeIn .25s ease; }
+  #processing h2 { margin: 18px 0 4px; font-size: 20px; }
+  .proc-spin {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto;
+    border: 4px solid #e5e7eb;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: procSpin .8s linear infinite;
+  }
+  @keyframes procSpin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #confirmation { animation: fadeIn .35s ease; }
+
   .conf-hero { text-align: center; padding: 24px 0 22px; }
 
   .conf-badge {
@@ -518,6 +537,12 @@
     <a class="back" id="back" href="events.html">← All events</a>
     <h1 id="event-name">Loading…</h1>
     <p class="meta" id="event-meta"></p>
+
+    <div id="processing" class="hidden" role="status" aria-live="polite">
+      <div class="proc-spin" aria-hidden="true"></div>
+      <h2>Payment received</h2>
+      <p class="meta">Confirming your booking. Please don't close or reload this page.</p>
+    </div>
 
     <div id="confirmation" class="hidden">
       <div class="conf-hero">
@@ -1089,8 +1114,10 @@
       (free ? "Total" : "Total paid") + '</span><span>' + money(booking.total_amount) +
       '</span></div>');
 
+    showProcessing(false);   // first: it would otherwise bring the form back
     $("booking-form").classList.add("hidden");
     $("payment-section").classList.add("hidden");
+    document.querySelector(".layout").classList.add("solo");
     clearStatus();   // the confirmation says it all
     $("conf-title").textContent = free ? "Your booking is confirmed" : "Payment confirmed";
     $("conf-sub").textContent = free
@@ -1631,9 +1658,11 @@
   function showPaymentWhenTickets() {
     var confirmed = !$("confirmation").classList.contains("hidden");
     var formShown = !$("booking-form").classList.contains("hidden");
+    var processing = !$("processing").classList.contains("hidden");
     var any = L.ticketItems(state.selection.tickets).length > 0;
 
-    $("payment-section").classList.toggle("hidden", confirmed || !formShown || !any);
+    $("payment-section").classList.toggle("hidden",
+      confirmed || !formShown || !any || processing);
     // Name, email and phone appear once a ticket is chosen.
     $("details-section").classList.toggle("hidden", !any);
     // Ticketing Protection only makes sense with a ticket chosen.
@@ -1712,6 +1741,21 @@
     } catch (e) {}
   }
 
+  // After the card is accepted: one calm screen instead of the form
+  // disappearing piece by piece, until the confirmation replaces it.
+  function showProcessing(on) {
+    var el = $("processing");
+    var wasOn = !el.classList.contains("hidden");
+    if (on === wasOn) return;
+
+    el.classList.toggle("hidden", !on);
+    document.querySelector(".layout").classList.toggle("solo", on);
+    $("booking-form").classList.toggle("hidden", on);
+    $("payment-section").classList.toggle("hidden", on);
+
+    if (on) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function openPayment() {
     if (!detailsProvided()) return;
     if (!waiverAccepted()) return;
@@ -1781,6 +1825,7 @@
       if (state.submitted && Date.now() - closedAt > SETTLE_SUBMITTED_MS) {
         stopWatching();
         state.submitted = true;   // stay locked: a payment is still arriving
+        showProcessing(false);
         showPaymentSection(false);
         say("warn", "Your payment was received and is still being confirmed. " +
           "Please do not pay again. Reload this page in a minute to check.");
@@ -1809,9 +1854,14 @@
 
     if (event.data.action === "submitted") {
       state.submitted = true;
-      showPaymentSection(true);
-      say("info", "Payment received. Confirming your booking…");
+      clearStatus();
+      showProcessing(true);
       render();
+
+      // Look often now: the confirmation should appear the moment it is paid.
+      clearInterval(payTimer);
+      payTimer = setInterval(checkPayment, 1500);
+      checkPayment();
     }
 
     if (event.data.action === "settled") checkPayment();
