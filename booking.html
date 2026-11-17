@@ -9,12 +9,12 @@
 
 <!--
   Booking page: time slot, tickets, add-ons, Ticketing Protection and a
-  discount code, then on to stripe_payment.html to pay.
+  discount code, then on to checkout_payment.html to pay.
 
   Usage:  booking.html?event_id=<uuid>
           booking.html?booking_id=<uuid>     reopen a pending booking
 
-  The backend base URL resolves as on stripe_payment.html:
+  The backend base URL resolves as on checkout_payment.html:
   ?api=<base>, then window.PAYMENT_API_BASE, then DEFAULT_API_BASE. The
   same base is handed on to the payment page, so a booking is always paid
   on the backend that made it.
@@ -1255,7 +1255,7 @@
   }
 
   function paymentUrl() {
-    var url = "stripe_payment.html?booking_id=" +
+    var url = "checkout_payment.html?booking_id=" +
       encodeURIComponent(state.booking.id);
 
     if (API_BASE) url += "&api=" + encodeURIComponent(API_BASE);
@@ -1658,7 +1658,7 @@
   var SETTLE_AFTER_CLOSE_MS = 30000;   // the webhook can lag a little
   var SETTLE_SUBMITTED_MS = 180000;    // longer once a payment was submitted
 
-  // The Stripe form is stripe_payment.html in a frame under the booking
+  // The payment form is checkout_payment.html in a frame under the booking
   // details, so the customer never leaves this page.
   // The frame replaces the placeholder once there is a booking to pay.
   function showPaymentSection(visible) {
@@ -1732,7 +1732,7 @@
 
   function loadIdleFrame() {
     frameReady = false;
-    $("pay-frame").src = "stripe_payment.html?embed=1" +
+    $("pay-frame").src = "checkout_payment.html?embed=1" +
       (API_BASE ? "&api=" + encodeURIComponent(API_BASE) : "");
     showPaymentSection(true);
   }

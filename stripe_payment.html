@@ -6,6 +6,14 @@
 <title>Complete your payment</title>
 
 <!--
+  DISABLED: the whole Stripe payment page is commented out. Payments now use
+  checkout_payment.html (Checkout.com Flow).
+
+  To bring Stripe back: restore the working version with
+      git checkout c91a38a -- stripe_payment.html
+  and point booking.html (the pay-frame src and paymentUrl) at
+  stripe_payment.html again.
+  ------------------------------------------------------------------------
   Stripe Payment Element page for a booking. Standalone: no other page,
   script, login or build step is needed, so this file can be copied into
   any frontend as it is.
@@ -38,7 +46,6 @@
     script-src  https://js.stripe.com;
     frame-src   https://js.stripe.com https://hooks.stripe.com;
     connect-src https://api.stripe.com <api base>;
--->
 
 <script src="https://js.stripe.com/v3/"></script>
 
@@ -907,5 +914,11 @@
 })();
 </script>
 
+</body>
+</html>
+-->
+</head>
+<body>
+<p>This Stripe payment page is disabled. Payments use checkout_payment.html.</p>
 </body>
 </html>
