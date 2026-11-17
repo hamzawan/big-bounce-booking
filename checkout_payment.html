@@ -136,6 +136,42 @@
 
   #payment-element { min-height: 40px; }
 
+  /* While the secure form loads it is kept out of sight and a box loader
+     takes its place. */
+  #payment-element.loading { height: 0; min-height: 0; overflow: hidden; opacity: 0; }
+
+  #card-loader {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    min-height: 150px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  #card-loader .bar {
+    height: 40px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #f1f3f5 25%, #e6e9ed 37%, #f1f3f5 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+
+  #card-loader .bar.short { width: 55%; }
+  #card-loader .note { font-size: 13px; color: var(--muted); }
+
+  @keyframes shimmer {
+    0%   { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #card-loader .bar { animation: none; }
+  }
+
   #pay {
     width: 100%;
     margin-top: 22px;
@@ -241,6 +277,11 @@
 
     <p id="card-idle" class="hidden">The card field appears here as soon as
       your tickets and email are chosen.</p>
+    <div id="card-loader" class="hidden" aria-live="polite">
+      <div class="bar"></div>
+      <div class="bar short"></div>
+      <span class="note">Loading secure payment form…</span>
+    </div>
     <div id="payment-element"></div>
 
     <button type="submit" id="pay" disabled>Pay</button>
@@ -303,6 +344,7 @@
   var flowGeneration = 0;  // bumps on every (re)mount, so a stale Flow is ignored
   var sessionAmountCents = null;  // the amount the mounted session was made for
   var ready     = false;   // payment form mounted
+  var firstLoad = true;    // the box loader is only for the first load
   var busy      = false;   // a payment is being submitted
   var settled   = false;   // paid, expired or otherwise final
   var remaining = 0;
@@ -374,6 +416,7 @@
   }
 
   function finish(kind, message) {
+    showLoader(false);
     tellOpener("settled");
     settled = true;
     refreshButton();
@@ -460,6 +503,7 @@
   // false when the page may still be used.
   function handleRefusal(res) {
     var detail = detailOf(res.body);
+    showLoader(false);
 
     if (res.status === 409 && detail === "Booking has already been paid.") {
       finish("ok", "This booking is already paid. Your tickets have been issued.");
@@ -547,6 +591,9 @@
       return;
     }
 
+    // Reserve tickets was clicked: the loader stands in until the form is up.
+    if (firstLoad) showLoader(true);
+
     if (typeof window.CheckoutWebComponents !== "function") {
       finish("bad", "Could not load the secure payment form. Please check " +
         "your connection and reload the page.");
@@ -579,6 +626,7 @@
         mountFlow(res.body);
       })
       .catch(function () {
+        showLoader(false);
         say("bad", "We could not reach the payment service. Please check " +
           "your connection and reload the page.");
       });
@@ -707,6 +755,12 @@
     document.getElementById("amount").textContent = amountText;
   }
 
+  // The box loader stands in for the card form until Flow reports it is ready.
+  function showLoader(on) {
+    document.getElementById("card-loader").classList.toggle("hidden", !on);
+    document.getElementById("payment-element").classList.toggle("loading", on);
+  }
+
   // Mounts Checkout.com Flow for the session the backend made. Called again
   // when the total changes; the older Flow is dropped and its callbacks
   // ignored.
@@ -717,6 +771,7 @@
     sessionAmountCents = session.amount_cents;
     ready = false;
     container.innerHTML = "";
+    if (firstLoad) showLoader(true);
 
     function current() { return generation === flowGeneration; }
 
@@ -758,6 +813,8 @@
       onReady: function () {
         if (!current()) return;
         ready = true;
+        firstLoad = false;
+        showLoader(false);
         refreshButton();
       },
 
@@ -779,6 +836,7 @@
       })
       .catch(function () {
         if (!current()) return;
+        showLoader(false);
         say("bad", "Could not load the secure payment form.");
       });
   }
@@ -835,6 +893,7 @@
   // while the reservation is held.
   function handleFlowError(error) {
     busy = false;
+    showLoader(false);
     refreshButton();
 
     if (error && error.code === "payment_request_failed") {
