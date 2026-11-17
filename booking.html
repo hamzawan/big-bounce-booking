@@ -1290,7 +1290,7 @@
     render();
 
     var call = creating
-      ? request("POST", CREATE_URL, body)
+      ? request("POST", L.createUrl(CREATE_URL), body)
       : request("PUT", updateUrl(state.booking.id), body);
 
     call

@@ -101,6 +101,23 @@
     };
   }
 
+  // The browser's IANA zone (e.g. America/New_York), or "" when it cannot be
+  // detected. The backend takes it as the ?timezone= query on create.
+  function detectTimezone() {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return typeof tz === "string" ? tz.trim() : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  // Create URL with ?timezone=<zone>; unchanged when no zone is detected.
+  function createUrl(base, timezone) {
+    var tz = timezone === undefined ? detectTimezone() : timezone;
+    return tz ? base + "?timezone=" + encodeURIComponent(tz) : base;
+  }
+
   function createPayload(selection) {
     var body = {
       items: ticketItems(selection.tickets),
@@ -419,6 +436,8 @@
     ticketItems: ticketItems,
     addOnItems: addOnItems,
     selectionFromBooking: selectionFromBooking,
+    detectTimezone: detectTimezone,
+    createUrl: createUrl,
     createPayload: createPayload,
     updatePayload: updatePayload,
     validate: validate,

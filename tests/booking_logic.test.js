@@ -304,3 +304,11 @@ test("protectionFor is 15% of the tickets after the discount", function () {
   assert.equal(L.protectionFor("40.00", "4.00"), "5.40");
   assert.equal(L.protectionFor("40.00"), "6.00");
 });
+
+test("createUrl adds the detected timezone as a query and skips an empty one", function () {
+  var base = "/api/v1/bookings/create/";
+  assert.equal(L.createUrl(base, "America/New_York"), base + "?timezone=America%2FNew_York");
+  assert.equal(L.createUrl(base, ""), base);
+  assert.equal(L.createUrl(base, null), base);
+  assert.equal(L.createUrl(base), L.detectTimezone() ? base + "?timezone=" + encodeURIComponent(L.detectTimezone()) : base);
+});
