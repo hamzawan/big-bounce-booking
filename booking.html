@@ -110,6 +110,18 @@
     border-radius: 6px;
   }
 
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 40px;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 12px 8px;
+  }
+
   .req { margin-left: 4px; font-size: 13px; font-weight: 600; color: var(--bad); }
 
   .field { position: relative; }
@@ -168,9 +180,10 @@
 
   .addon .qty-select {
     width: 100%;
-    padding: 9px 8px;
+    padding: 9px 32px 9px 8px;
     font: inherit;
-    background: #fff;
+    background-color: #fff;
+    background-position: right 10px center;
     border: 1px solid #d1d5db;
     border-radius: 4px;
   }
