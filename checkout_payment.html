@@ -136,32 +136,34 @@
 
   #payment-element { min-height: 40px; }
 
-  /* While the secure form loads it is kept out of sight and a box loader
-     takes its place. */
+  /* After "Reserve tickets" a card-shaped skeleton (card number, expiry, CVC
+     and a pay button) stands in until the secure form is ready. The form
+     itself stays out of sight meanwhile. */
   #payment-element.loading { height: 0; min-height: 0; overflow: hidden; opacity: 0; }
 
   #card-loader {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 12px;
-    min-height: 150px;
     padding: 18px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: #fff;
   }
 
-  #card-loader .bar {
-    height: 40px;
+  #card-loader .bar,
+  #card-loader .btn {
     border-radius: 8px;
     background: linear-gradient(90deg, #f1f3f5 25%, #e6e9ed 37%, #f1f3f5 63%);
     background-size: 400% 100%;
     animation: shimmer 1.4s ease infinite;
   }
 
-  #card-loader .bar.short { width: 55%; }
-  #card-loader .note { font-size: 13px; color: var(--muted); }
+  #card-loader .bar { height: 42px; }
+  #card-loader .bar.label { height: 10px; width: 90px; margin-bottom: 8px; border-radius: 5px; }
+  #card-loader .field { margin-bottom: 14px; }
+  #card-loader .two { display: flex; gap: 12px; }
+  #card-loader .two .field { flex: 1; }
+  #card-loader .btn { height: 46px; margin-top: 6px; }
+  #card-loader .note { display: block; margin-top: 12px; font-size: 13px;
+    color: var(--muted); text-align: center; }
 
   @keyframes shimmer {
     0%   { background-position: 100% 50%; }
@@ -169,7 +171,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    #card-loader .bar { animation: none; }
+    #card-loader .bar, #card-loader .btn { animation: none; }
   }
 
   #pay {
@@ -278,8 +280,12 @@
     <p id="card-idle" class="hidden">The card field appears here as soon as
       your tickets and email are chosen.</p>
     <div id="card-loader" class="hidden" aria-live="polite">
-      <div class="bar"></div>
-      <div class="bar short"></div>
+      <div class="field"><div class="bar label"></div><div class="bar"></div></div>
+      <div class="two">
+        <div class="field"><div class="bar label"></div><div class="bar"></div></div>
+        <div class="field"><div class="bar label"></div><div class="bar"></div></div>
+      </div>
+      <div class="btn"></div>
       <span class="note">Loading secure payment form…</span>
     </div>
     <div id="payment-element"></div>
@@ -344,7 +350,7 @@
   var flowGeneration = 0;  // bumps on every (re)mount, so a stale Flow is ignored
   var sessionAmountCents = null;  // the amount the mounted session was made for
   var ready     = false;   // payment form mounted
-  var firstLoad = true;    // the box loader is only for the first load
+  var firstLoad = true;    // the card loader is only for the first load
   var busy      = false;   // a payment is being submitted
   var settled   = false;   // paid, expired or otherwise final
   var remaining = 0;
