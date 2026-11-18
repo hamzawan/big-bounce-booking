@@ -902,14 +902,34 @@
     showLoader(false);
     refreshButton();
 
-    if (error && error.code === "payment_request_failed") {
+    var code = error && error.code;
+
+    // A plain decline: the card form already shows the reason for a moment,
+    // so no banner of our own.
+    if (code === "payment_request_declined") {
+      clearStatus();
+      return;
+    }
+
+    if (code === "payment_request_failed") {
       say("bad", "Your payment was declined. You can try again with the " +
         "same or another card.");
       return;
     }
 
-    say("bad", (error && error.message) ||
+    say("bad", cleanSdkMessage(error && error.message) ||
       "Your payment could not be completed. Please try again.");
+  }
+
+  // The Flow SDK formats messages like "[Request]: Some text [some_code]".
+  // Strip the prefix and the trailing code so only the readable text remains.
+  function cleanSdkMessage(message) {
+    if (typeof message !== "string") return "";
+    var text = message
+      .replace(/^\s*\[[^\]]*\]\s*:?\s*/, "")
+      .replace(/\s*\[[a-z0-9_]+\]\s*$/i, "")
+      .trim();
+    return text;
   }
 
   // Checkout.com accepting the card is not the end: the booking is paid when the
