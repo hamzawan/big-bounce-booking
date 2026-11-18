@@ -621,8 +621,20 @@
     // The contact details come from the booking, so they are read after it
     // has loaded; the session saves them on the booking.
     loadBooking()
-      .then(function () { return postSession(readContact()); })
+      .then(function (booking) {
+        // Already paid (back button, reopened link): no session is needed,
+        // and the backend would only refuse one.
+        if (booking && booking.status === "paid") {
+          finish("ok", "Payment confirmed. Your booking is paid and your " +
+            "tickets have been issued.");
+          return null;
+        }
+
+        return postSession(readContact());
+      })
       .then(function (res) {
+        if (!res) return;
+
         if (res.status !== 200) {
           handleRefusal(res);
           return;
@@ -675,7 +687,7 @@
   function loadBooking() {
     return getBooking()
       .then(function (res) {
-        if (res.status !== 200) return;
+        if (res.status !== 200) return null;
 
         var booking = res.body;
 
@@ -694,8 +706,10 @@
           document.getElementById("edit-link").href = edit;
           document.getElementById("edit").classList.remove("hidden");
         }
+
+        return booking;
       })
-      .catch(function () {});
+      .catch(function () { return null; });
   }
 
   // The booking's own figures; the amount charged is still the intent's.
